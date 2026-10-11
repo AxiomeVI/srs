@@ -82,4 +82,32 @@ public class BerrySetsTests {
         Assert.Equal(["a-01:4"], BerrySets.Resolve(new BerrySet("Start"), map, CheckpointOf));
         Assert.Null(BerrySets.Resolve(BerrySet.MoonBerry, ForsakenCity, CheckpointOf));
     }
+
+    // 1A's rows that end on a Return to Map: the berries each takes
+    [Fact]
+    public void TheReturnToMapRowsOfForsakenCity() {
+        Assert.Equal(Sorted("2:11", "3:9", "3b:2", "5z:10", "5:21", "5a:2", "7zb:2"), Keys(Row("1a", "ARB Start to RTM")));
+        Assert.Equal(Sorted("6:12", "s1:9", "7z:3", "8zb:1", "7a:12", "9z:3", "8b:1", "9:14", "11:9", "10zb:1"),
+            Keys(Row("1a", "ARB Crossing to RTM")));
+        Assert.Equal(Sorted("7z:3", "8zb:1", "7a:12", "9z:3", "8b:1", "9:14", "11:9", "10zb:1"),
+            Keys(Row("1a", "ARB Heart to RTM")));
+        Assert.Equal(["7zb:2"], Keys(Row("1a", "ARB Crossing-2")));
+        Assert.Equal(Sorted("11:9", "10zb:1"), Keys(Row("1a", "ARB Chasm-2")));
+    }
+
+    // every distinct route through 1A's berries: each takes every berry exactly once
+    [Theory]
+    [InlineData("Start|Crossing|Chasm|Crossing-2|Chasm-2")]
+    [InlineData("Start|Crossing to RTM|Chasm|Crossing-2")]
+    [InlineData("Start|Crossing to Heart|Heart to RTM|Chasm|Crossing-2")]
+    [InlineData("Start to Heart|Heart to RTM|Chasm|Crossing-2")]
+    [InlineData("Start to RTM|Crossing to Heart|Heart to RTM|Chasm")]
+    [InlineData("Start to RTM|Crossing|Chasm|Chasm-2")]
+    [InlineData("Start to RTM|Crossing to RTM|Chasm")]
+    public void EveryRouteThroughForsakenCityTakesEachBerryOnce(string route) {
+        List<string> taken = route.Split('|')
+            .SelectMany(name => Keys(TestRules.Find("1a", "ARB " + name).Berries)).Order().ToList();
+
+        Assert.Equal(ForsakenCity.Select(berry => berry.Key).Order().ToList(), taken);
+    }
 }

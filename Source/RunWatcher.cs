@@ -325,7 +325,7 @@ public static class RunWatcher {
             if (controlBefore) {
                 tracker.Restart(scope, roomBefore, before - (wipeEnd ? WipeEndFrame : 0), true,
                     stateBefore == Player.StIntroJump,
-                    movedAtLoad ? _ => false : AtStartSpawn(dataBefore, spawnAtLoad));
+                    movedAtLoad ? _ => false : AtStartSpawn(session, dataBefore, spawnAtLoad), fromState: true);
             } else {
                 tracker.RestartAtAppearance(scope, roomBefore);
             }
@@ -343,7 +343,7 @@ public static class RunWatcher {
             // the spawn tested is the one the player appears at (an intro
             // starts off screen). A checkpoint entered from chapter select
             // counts without its wake-up
-            Func<SegmentRule, bool> atStart = AtStartSpawn(session.LevelData, session.RespawnPoint);
+            Func<SegmentRule, bool> atStart = AtStartSpawn(session, session.LevelData, session.RespawnPoint);
             PendingLeave left = leave;
             leave = null;
             bool reentry = left != null && IsReentry(left, session, before);
@@ -375,7 +375,8 @@ public static class RunWatcher {
         } else if (teleported) {
             // Speed Run Tool's room teleport skips rooms without lowering chapter
             // time: a new attempt from the spawn it put the player on
-            tracker.Restart(scope, room, before, control, launching, AtStartSpawn(session.LevelData, session.RespawnPoint));
+            tracker.Restart(scope, room, before, control, launching,
+                AtStartSpawn(session, session.LevelData, session.RespawnPoint));
             attempt.Clear();
             leave = null;
             restarted = true;
@@ -388,7 +389,8 @@ public static class RunWatcher {
             // Level.Reload zeroes chapter time on a death in the first room
             // with nothing collected: a new attempt from the spawn, which
             // without control waits for ControlReturned
-            tracker.Restart(scope, room, after, control, launching, AtStartSpawn(session.LevelData, session.RespawnPoint));
+            tracker.Restart(scope, room, after, control, launching,
+                AtStartSpawn(session, session.LevelData, session.RespawnPoint));
             attempt.Clear();
             leave = null;
             restarted = true;
@@ -431,7 +433,7 @@ public static class RunWatcher {
             }
 
             if (!lastControl && control) {
-                tracker.ControlReturned(room, after, AtStartSpawn(session.LevelData, player?.ExactPosition));
+                tracker.ControlReturned(room, after, AtStartSpawn(session, session.LevelData, player?.ExactPosition));
             }
         }
 
@@ -471,11 +473,12 @@ public static class RunWatcher {
     // a savestate further into the room does not play it: the point must be on
     // a start spawn, or at its SpawnOffsets offset. A "Start" row's are the
     // room's default spawn (the game's own, Level.DefaultSpawnPoint) and the
-    // one beside each checkpoint
-    private static Func<SegmentRule, bool> AtStartSpawn(LevelData data, Vector2? point) =>
-        rule => point is { } at && AtStartSpawn(data, at, rule);
+    // one beside each checkpoint. The session is read when the tracker asks,
+    // inside the call that was handed the test
+    private static Func<SegmentRule, bool> AtStartSpawn(Session session, LevelData data, Vector2? point) =>
+        rule => point is { } at && AtStartSpawn(session, data, at, rule);
 
-    private static bool AtStartSpawn(LevelData data, Vector2 point, SegmentRule rule) {
+    private static bool AtStartSpawn(Session session, LevelData data, Vector2 point, SegmentRule rule) {
         if (data == null || data.Spawns.Count == 0) {
             return false;
         }
@@ -486,6 +489,14 @@ public static class RunWatcher {
 
         if (rule.Setup == StartSetup.MapSpawn) {
             return CheckpointSpawn(data) is { } spawn && On(spawn);
+        }
+
+        // the spawn a Save and Quit taken after the heart resumes on: the one
+        // the room's respawn trigger sets on the way to it, never the room's
+        // entrance. The heart is the session's, and which restart this is,
+        // the tracker knows
+        if (rule.Setup == StartSetup.HeartRespawn) {
+            return session.HeartGem && RespawnTriggerSpawn(data) is { } respawn && On(respawn);
         }
 
         if (rule.Anchor != "Start") {
@@ -514,6 +525,25 @@ public static class RunWatcher {
         foreach (EntityData entity in data.Entities) {
             if (entity.Name == "checkpoint") {
                 Vector2 at = entity.Nodes is { Length: > 0 } nodes ? nodes[0] : entity.Position;
+                spawn = data.Spawns.ClosestTo(data.Position + at);
+            }
+        }
+
+        return spawn;
+    }
+
+    // the spawn the room's respawn trigger makes the session's respawn point,
+    // as ChangeRespawnTrigger picks it: the closest to its node, or to its
+    // centre. A trigger's position and node are the room's own, a spawn is
+    // the world's. One trigger is expected: of several, the last is taken,
+    // which the game does not promise
+    private static Vector2? RespawnTriggerSpawn(LevelData data) {
+        Vector2? spawn = null;
+        foreach (EntityData trigger in data.Triggers) {
+            if (trigger.Name == "changeRespawnTrigger") {
+                Vector2 at = trigger.Nodes is { Length: > 0 } nodes
+                    ? nodes[0]
+                    : trigger.Position + new Vector2(trigger.Width, trigger.Height) / 2f;
                 spawn = data.Spawns.ClosestTo(data.Position + at);
             }
         }
@@ -640,7 +670,15 @@ public static class RunWatcher {
         // show the chapter run and step back to the segment
         List<SegmentRule> rules = records.ConvertAll(record => record.Rule);
         foreach (bool chapterRun in (bool[])[false, true]) {
-            if (Specificity.MostSpecific(rules, chapterRun) is >= 0 and int shown) {
+            if (Specificity.MostSpecific(rules, chapterRun, tracker.Rooms.BerriesOf) is >= 0 and int shown) {
+                // the piece run since a Save and Quit, closing under a wider row:
+                // one step back from it
+                List<SegmentRecord> pieces = records.FindAll(record => record.Rule.Setup == StartSetup.HeartRespawn);
+                if (!chapterRun && rules[shown].Setup != StartSetup.HeartRespawn
+                    && Specificity.MostSpecific(pieces.ConvertAll(record => record.Rule), false, tracker.Rooms.BerriesOf) is >= 0 and int piece) {
+                    attempt.Add((pieces[piece], ++LatestSerial));
+                }
+
                 attempt.Add((records[shown], ++LatestSerial));
             }
         }

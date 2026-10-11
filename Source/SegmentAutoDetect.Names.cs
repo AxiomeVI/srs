@@ -21,6 +21,8 @@ public static partial class SegmentAutoDetect {
     // the sheet does not time it from the checkpoint's own room. The segment
     // before ends there too: the two never overlap
     internal static readonly Dictionary<(string Scope, string GameName), string> StartRoomOverrides = new() {
+        // no checkpoint of the map: the room 1A's heart is collected in
+        [("1a", "Heart")] = "s1",
         // the sheet times Awake from the wake-up in end_0, three rooms before
         // the checkpoint's end_3: Intervention ends on entering end_0
         [("2a", "Awake")] = "end_0",
@@ -151,6 +153,14 @@ public static partial class SegmentAutoDetect {
         [("5a", "Unravelling")] = (-832, 1688),
         [("5b", "Through the Mirror")] = (3680, -984),
     };
+
+    // (scope, virtual checkpoint) of the segments that start where a Save and
+    // Quit taken after the heart puts the player back, or from a savestate
+    // there, and on nothing else. The spawn is the one the room's respawn
+    // trigger sets, read from the map by RunWatcher: no coordinates here
+    internal static readonly HashSet<(string Scope, string GameName)> HeartRespawns = [
+        ("1a", "Heart"),
+    ];
 
     // (scope, game checkpoint) -> where the player stands, relative to a spawn
     // of the start room, on the first frame with control; every other Current

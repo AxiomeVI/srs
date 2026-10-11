@@ -1258,4 +1258,232 @@ public class RunTrackerTests {
         t.Reentered(LeaveKind.ChapterEnd, "1a", "9b", 0, true, false, _ => true);
         Assert.Empty(t.Open);
     }
+
+    // a row that ends on a Return to Map closes there, on the leave's reading
+    [Fact]
+    public void AReturnToMapRowClosesAtThatLeave() {
+        Add("ARB Crossing-2", "6", null, endKind: EndKind.ReturnToMap, setup: StartSetup.MapSpawn, berries: true);
+        rooms.Berries["ARB Crossing-2"] = ["b1"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "6", 10, true, false, _ => true);
+        t.BerryCollected("b1");
+
+        Assert.Equal([("ARB Crossing-2", 290L)], Of(t.Left(LeaveKind.ReturnToMap, 300, One)));
+        Assert.Empty(t.Open);
+    }
+
+    // 5A's berry Start walks into Depths' room and back before it leaves
+    [Fact]
+    public void AReturnToMapRowDoesNotEndOnARoomEntry() {
+        Add("Start", "a-00", "b-00", setup: StartSetup.CurrentRoom);
+        Add("ARB Start", "a-00", "b-00", endKind: EndKind.ReturnToMap, setup: StartSetup.CurrentRoom, berries: true);
+        Add("Depths", "b-00", null, entry: "a-13");
+        rooms.Berries["ARB Start"] = ["b1", "b2"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "a-00", 0, true, false, _ => true);
+        t.BerryCollected("b1");
+        Assert.Equal([("Start", 100L)], Of(t.RoomEntered("1a", "a-13", "b-00", 100, true, false, One)));
+        Assert.Equal(["ARB Start", "Depths"], t.Open.Select(r => r.Name));
+        t.RoomEntered("1a", "b-00", "a-13", 120, true, false, One);
+        t.BerryCollected("b2");
+
+        Assert.Equal([("ARB Start", 300L)], Of(t.Left(LeaveKind.ReturnToMap, 300, One)));
+    }
+
+    // nor on chapter time stopping: a chapter's end drops it like any row
+    // that does not end there
+    [Fact]
+    public void AReturnToMapRowIsDroppedByAChaptersEnd() {
+        Add("ARB Chasm-2", "9b", null, endKind: EndKind.ReturnToMap, setup: StartSetup.MapSpawn, berries: true);
+        rooms.Berries["ARB Chasm-2"] = ["b1"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "9b", 0, true, false, _ => true);
+        t.BerryCollected("b1");
+        Assert.Empty(t.ChapterTimeStopped(200, One));
+        Assert.Equal(["ARB Chasm-2"], t.Open.Select(r => r.Name));
+
+        Assert.Empty(t.Left(LeaveKind.ChapterEnd, 200, One));
+        Assert.Empty(t.Open);
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 300, One));
+    }
+
+    // 1A's Crossing to RTM with the Save and Quit after the heart
+    [Fact]
+    public void AReturnToMapRowCarriesAcrossASaveAndQuit() {
+        Add("ARB Crossing to RTM", "6", null, requires: Collectibles.Heart, endKind: EndKind.ReturnToMap,
+            setup: StartSetup.MapSpawn, berries: true);
+        rooms.Berries["ARB Crossing to RTM"] = ["b1", "b2"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "6", 0, true, false, _ => true);
+        t.BerryCollected("b1");
+        t.Collected(Collectibles.Heart, 80, One);
+        Assert.Empty(t.Left(LeaveKind.SaveAndQuit, 100, One));
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "s1", 100, true, false, _ => false);
+        t.BerryCollected("b2");
+
+        Assert.Equal([("ARB Crossing to RTM", 250L)], Of(t.Left(LeaveKind.ReturnToMap, 250, One)));
+    }
+
+    // the game loses a berry still following with the level. Anywhere else
+    // it counts (AFollowingBerryCounts)
+    [Fact]
+    public void ABerryStillFollowingAtAReturnToMapDoesNotCount() {
+        Add("ARB Crossing-2", "6", null, endKind: EndKind.ReturnToMap, setup: StartSetup.MapSpawn, berries: true);
+        rooms.Berries["ARB Crossing-2"] = ["b1"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "6", 0, true, false, _ => true);
+
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 300, new EndState(1, ["b1"])));
+        Assert.Empty(t.Open);
+    }
+
+    [Theory]
+    [InlineData("berry")]
+    [InlineData("heart")]
+    public void AReturnToMapRowMissingWhatItRequiresRecordsNothing(string missing) {
+        Add("ARB Crossing to RTM", "6", null, requires: Collectibles.Heart, endKind: EndKind.ReturnToMap,
+            setup: StartSetup.MapSpawn, berries: true);
+        rooms.Berries["ARB Crossing to RTM"] = ["b1", "b2"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "6", 0, true, false, _ => true);
+        t.BerryCollected("b1");
+        if (missing != "berry") {
+            t.BerryCollected("b2");
+        }
+
+        if (missing != "heart") {
+            t.Collected(Collectibles.Heart, 80, One);
+        }
+
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 300, One));
+        Assert.Empty(t.Open);
+    }
+
+    // what a row requires is a floor: a run that also takes the far berry
+    // records the row that asks for it too
+    [Fact]
+    public void ARunThatTakesMoreRecordsEveryReturnToMapRowItMeets() {
+        Add("ARB Crossing to RTM", "6", null, requires: Collectibles.Heart, endKind: EndKind.ReturnToMap,
+            setup: StartSetup.MapSpawn, berries: true);
+        Add("ARB Crossing-2", "6", null, endKind: EndKind.ReturnToMap, setup: StartSetup.MapSpawn, berries: true);
+        rooms.Berries["ARB Crossing to RTM"] = ["b1", "b2"];
+        rooms.Berries["ARB Crossing-2"] = ["b3"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "6", 0, true, false, _ => true);
+        t.BerryCollected("b1");
+        t.BerryCollected("b2");
+        t.BerryCollected("b3");
+        t.Collected(Collectibles.Heart, 80, One);
+
+        Assert.Equal([("ARB Crossing to RTM", 300L), ("ARB Crossing-2", 300L)],
+            Of(t.Left(LeaveKind.ReturnToMap, 300, One)));
+    }
+
+    // 1A's Heart to RTM: the respawn of the Save and Quit that follows the
+    // heart starts it. Whether the heart is taken is RunWatcher's to say,
+    // through atStart
+    [Fact]
+    public void AHeartRespawnRowOpensOnASaveAndQuitReentry() {
+        Add("ARB Crossing to Heart", "6", null, requires: Collectibles.Heart, endKind: EndKind.Collect,
+            endsOn: Collectibles.Heart, setup: StartSetup.MapSpawn);
+        Add("ARB Heart to RTM", "s1", null, endKind: EndKind.ReturnToMap, setup: StartSetup.HeartRespawn,
+            berries: true);
+        rooms.Berries["ARB Heart to RTM"] = ["b1"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "6", 0, true, false, _ => true);
+        Assert.Equal([("ARB Crossing to Heart", 80L)], Of(t.Collected(Collectibles.Heart, 80, One)));
+        t.Left(LeaveKind.SaveAndQuit, 100, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "s1", 100, false, false, _ => true);
+        Assert.Empty(t.Open);
+        t.ControlReturned("s1", 100, _ => false);
+        Assert.Equal(["ARB Heart to RTM"], t.Open.Select(r => r.Name));
+        t.BerryCollected("b1");
+
+        Assert.Equal([("ARB Heart to RTM", 200L)], Of(t.Left(LeaveKind.ReturnToMap, 300, One)));
+    }
+
+    // a level from the loader, a teleport, a first-room reset; a checkpoint
+    // picked on the map; walking in, even where the double names an entry room
+    [Theory]
+    [InlineData("restart")]
+    [InlineData("return to map")]
+    [InlineData("chapter end")]
+    [InlineData("walk in")]
+    public void AHeartRespawnRowOpensOnNothingElse(string how) {
+        Add("Before", "s0", "s1", setup: StartSetup.CurrentRoom);
+        Add("ARB Heart to RTM", "s1", null, endKind: EndKind.ReturnToMap, setup: StartSetup.HeartRespawn,
+            entry: "s0");
+        RunTracker t = Tracker();
+
+        switch (how) {
+            case "restart":
+                t.Restart("1a", "s1", 0, true, false, _ => true);
+                break;
+            case "return to map":
+                t.Reentered(LeaveKind.ReturnToMap, "1a", "s1", 0, true, false, _ => true);
+                break;
+            case "chapter end":
+                t.Reentered(LeaveKind.ChapterEnd, "1a", "s1", 0, true, false, _ => true);
+                break;
+            default:
+                t.Restart("1a", "s0", 0, true, false, _ => true);
+                t.RoomEntered("1a", "s0", "s1", 50, true, false, One);
+                break;
+        }
+
+        Assert.DoesNotContain("ARB Heart to RTM", t.Open.Select(r => r.Name));
+    }
+
+    // the room a heart-respawn row starts in is not an entry its predecessor's
+    // time is recorded on, even where the double names an entry room
+    [Fact]
+    public void AHeartRespawnRowIsNotTheSuccessorOfTheRowEndingInItsRoom() {
+        Add("Before", "s0", "s1", setup: StartSetup.CurrentRoom);
+        Add("ARB Heart to RTM", "s1", null, endKind: EndKind.ReturnToMap, setup: StartSetup.HeartRespawn,
+            entry: "s0");
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "s0", 0, true, false, _ => true);
+
+        Assert.Empty(Of(t.RoomEntered("1a", "s0", "s1", 50, true, false, One)));
+    }
+
+    // a savestate made on that respawn, loaded with control or before it
+    [Fact]
+    public void AHeartRespawnRowOpensFromAStateOnItsSpawn() {
+        Add("ARB Heart to RTM", "s1", null, endKind: EndKind.ReturnToMap, setup: StartSetup.HeartRespawn);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "s1", 0, true, false, _ => true, fromState: true);
+        Assert.Equal(["ARB Heart to RTM"], t.Open.Select(r => r.Name));
+
+        RunTracker waiting = Tracker();
+        waiting.RestartAtAppearance("1a", "s1");
+        waiting.ControlReturned("s1", 20, _ => true);
+        Assert.Equal(["ARB Heart to RTM"], waiting.Open.Select(r => r.Name));
+    }
+
+    // a second Save and Quit on the same respawn carries the row on with its
+    // time: it is not started over
+    [Fact]
+    public void AHeartRespawnRowCarriedOnIsNotOpenedAgain() {
+        Add("ARB Heart to RTM", "s1", null, endKind: EndKind.ReturnToMap, setup: StartSetup.HeartRespawn);
+        RunTracker t = Tracker();
+
+        t.Left(LeaveKind.SaveAndQuit, 100, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "s1", 100, true, false, _ => true);
+        t.Left(LeaveKind.SaveAndQuit, 150, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "s1", 150, true, false, _ => true);
+
+        Assert.Equal(["ARB Heart to RTM"], t.Open.Select(r => r.Name));
+        Assert.Equal([("ARB Heart to RTM", 150L)], Of(t.Left(LeaveKind.ReturnToMap, 250, One)));
+    }
 }

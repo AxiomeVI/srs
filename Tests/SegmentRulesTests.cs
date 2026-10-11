@@ -48,11 +48,11 @@ public class SegmentRulesTests {
         "Farewell/Start DTS",
         "Farewell/DTS IL",
         "Farewell/No DTS IL",
-        "1a/ARB Start to Heart", "1a/ARB Start",
+        "1a/ARB Start to RTM", "1a/ARB Start to Heart", "1a/ARB Start",
         "2a/ARB Start", "2a/ARB Awake", "2a/ARB IL",
         "3a/ARB Start", "3a/ARB IL",
         "4a/ARB Start", "4a/ARB IL",
-        "5a/ARB Unravelling",
+        "5a/ARB Start", "5a/ARB Unravelling",
         "7a/ARB Start", "7a/ARB IL",
         "8a/ARB IL",
     ];
@@ -87,8 +87,8 @@ public class SegmentRulesTests {
         }
     }
 
-    // every other row is NextRoom or MapSpawn (TheMapSpawnRows): a new Start-anchored row, or a new
-    // wake-up, shows up here as a diff
+    // every other row is NextRoom, MapSpawn (TheMapSpawnRows) or HeartRespawn: a new Start-anchored
+    // row, or a new wake-up, shows up here as a diff
     [Fact]
     public void CurrentRoomRowsAreTheChapterStartsAndTheWakeUps() {
         HashSet<string> currentRoom = SegmentRules.All.Where(r => r.Setup == StartSetup.CurrentRoom)
@@ -102,12 +102,12 @@ public class SegmentRulesTests {
         Assert.Equal(SheetRows.All.Length, SegmentRules.All.Count);
     }
 
-    // two rules with the same start, setup, end, requirements and exclusivity could not
-    // be told apart by anything a run does
+    // two rules with the same start, setup, end, requirements, berries and exclusivity
+    // could not be told apart by anything a run does
     [Fact]
     public void NoTwoRulesAreIndistinguishable() {
         var clashes = SegmentRules.All
-            .GroupBy(r => (r.Scope, r.Anchor, r.Start, r.Setup, r.End, r.EndsOn, r.Requires, r.RequiresBerries, r.Dashes))
+            .GroupBy(r => (r.Scope, r.Anchor, r.Start, r.Setup, r.End, r.EndsOn, r.Requires, SetOf(r.Berries), r.Dashes))
             .Where(group => group.Count() > 1)
             .Select(group => string.Join(" / ", group.Select(r => r.Name)))
             .ToList();
@@ -129,16 +129,17 @@ public class SegmentRulesTests {
             bool berryTab = r.Name.StartsWith("ARB ") || (r.Name.StartsWith("FC ") && r.Scope != "6a");
             Assert.Equal(berryTab, r.RequiresBerries);
         });
-        Assert.Equal(39, SegmentRules.All.Count(r => r.Name.StartsWith("ARB ")));
-        Assert.Equal(20, SegmentRules.All.Count(r => r.Name.StartsWith("FC ") && r.RequiresBerries));
+        Assert.Equal(48, SegmentRules.All.Count(r => r.Name.StartsWith("ARB ")));
+        Assert.Equal(23, SegmentRules.All.Count(r => r.Name.StartsWith("FC ") && r.RequiresBerries));
         Assert.Equal(12, SegmentRules.All.Count(r => r.RequiresBerries && r.ChapterRun));
     }
 
     [Fact]
     public void TheMapSpawnRows() {
         Assert.Equal(
-            ["1a/ARB Crossing to Heart", "1a/ARB Crossing", "1a/ARB Chasm", "4a/ARB Cliff Face (from RTM)", "5a/ARB Depths",
-             "5a/FC Depths", "6a/FC Hollows (from RTM)"],
+            ["1a/ARB Crossing to Heart", "1a/ARB Crossing to RTM", "1a/ARB Crossing", "1a/ARB Chasm", "1a/ARB Crossing-2",
+             "1a/ARB Chasm-2", "4a/ARB Cliff Face (from RTM)", "5a/ARB Depths", "7a/ARB 2500m-2",
+             "1a/FC Crossing to RTM", "1a/FC Chasm-2", "5a/FC Depths", "6a/FC Hollows (from RTM)"],
             SegmentRules.All.Where(r => r.Setup == StartSetup.MapSpawn).Select(r => $"{r.Scope}/{r.Name}"));
     }
 
@@ -146,8 +147,8 @@ public class SegmentRulesTests {
     [Fact]
     public void TheBerryRowsThatNeedTheHeart() {
         Assert.Equal(
-            ["1a/ARB Crossing to Heart", "1a/ARB Start to Heart", "1a/ARB Crossing", "3a/ARB Huge Mess", "4a/ARB Shrine",
-             "3a/ARB IL", "4a/ARB IL"],
+            ["1a/ARB Crossing to Heart", "1a/ARB Crossing to RTM", "1a/ARB Start to Heart", "1a/ARB Crossing",
+             "3a/ARB Huge Mess", "4a/ARB Shrine", "3a/ARB IL", "4a/ARB IL"],
             SegmentRules.All.Where(r => r.Name.StartsWith("ARB ") && r.Requires == Collectibles.Heart)
                 .Select(r => $"{r.Scope}/{r.Name}"));
         Assert.All(SegmentRules.All.Where(r => r.Name.StartsWith("ARB ")),
@@ -246,8 +247,8 @@ public class SegmentRulesTests {
              Rule("Farewell", "FC Moon Berry").Dashes));
     }
 
-    // Contains compares the berry flag only: a Full Clear row must ask for its berry twin's very
-    // set, or it would pass for more specific than a row whose berries it does not hold
+    // a Full Clear row must ask for its berry twin's very set, or it would not pass for more
+    // specific than the row it is the full clear of
     [Fact]
     public void AFullClearRowAsksForItsBerryTwinsBerries() {
         foreach (SegmentRule fc in SegmentRules.All.Where(r => r.Name.StartsWith("FC ") && r.Scope != "Farewell")) {
@@ -276,8 +277,14 @@ public class SegmentRulesTests {
         static SegmentRule Shown(params SegmentRule[] met) => ShownOf(false, met);
     }
 
+    // without a map, a set is told by its description: the same one is the
+    // same berries, and no other holds it
     private static SegmentRule ShownOf(bool chapterRun, SegmentRule[] met) =>
-        met[Specificity.MostSpecific(met, chapterRun)];
+        met[Specificity.MostSpecific(met, chapterRun, rule => rule.Berries == null ? null : [SetOf(rule.Berries)])];
+
+    private static string SetOf(BerrySet set) => set == null ? null
+        : $"{set.Checkpoint}|{string.Join(",", (set.Rooms ?? []).Order())}|{string.Join(",", (set.Except ?? []).Order())}"
+          + $"|{set.Chapter}|{set.Moon}";
 
     // a gem row is its plain row plus the gem its label marks
     [Fact]
@@ -361,11 +368,13 @@ public class SegmentRulesTests {
         Assert.Equal(new int?[] { 1, 2, null, null }, rules.Select(r => r.Dashes));
     }
 
-    // a marker read wrong mistimes its row without a sound
+    // a marker read wrong mistimes its row without a sound. "to RTM" is no marker: those rows end
+    // on a Return to Map (TheRowsThatEndOnAReturnToMap)
     [Fact]
     public void OnlyTheRcRtmAndToHeartRowsEndEarly() {
         Assert.Equal(
-            SheetRows.All.Where(r => r.Label.EndsWith("RTM") || r.Label.EndsWith("RC") || r.Label.EndsWith("to Heart"))
+            SheetRows.All.Where(r => (r.Label.EndsWith("RTM") && !r.Label.EndsWith("to RTM")) || r.Label.EndsWith("RC")
+                                     || r.Label.EndsWith("to Heart"))
                 .Select(r => $"{r.Scope}/{r.Name}"),
             SegmentRules.All.Where(r => r.End is EndKind.Collect or EndKind.Restart).Select(r => $"{r.Scope}/{r.Name}"));
     }
@@ -452,5 +461,81 @@ public class SegmentRulesTests {
 
         Assert.Equal((EndKind.Collect, Collectibles.Heart, Collectibles.Heart), (rule.End, rule.EndsOn, rule.Requires));
         Assert.False(rule.ChapterRun);
+    }
+
+    // the eleven rows that end on a Return to Map, and nothing else does
+    [Fact]
+    public void TheRowsThatEndOnAReturnToMap() {
+        Assert.Equal(
+            ["1a/ARB Start to RTM", "1a/ARB Crossing to RTM", "1a/ARB Heart to RTM", "1a/ARB Crossing-2", "1a/ARB Chasm-2",
+             "4a/ARB Old Trail (to RTM)", "5a/ARB Start", "7a/ARB 2500m-2",
+             "1a/FC Heart to RTM", "1a/FC Crossing to RTM", "1a/FC Chasm-2"],
+            SegmentRules.All.Where(r => r.End == EndKind.ReturnToMap).Select(r => $"{r.Scope}/{r.Name}"));
+        Assert.All(SegmentRules.All.Where(r => r.End == EndKind.ReturnToMap),
+            r => Assert.Equal((Collectibles.None, false), (r.EndsOn, r.ChapterRun)));
+    }
+
+    // the two rows that start on the next room entered, which no list of start
+    // setups pins. StartSetup as an int: the enum is internal
+    [Theory]
+    [InlineData("4a", "ARB Old Trail (to RTM)", "Old Trail", (int)StartSetup.NextRoom)]
+    [InlineData("7a", "ARB 2500m-1", "2500 M", (int)StartSetup.NextRoom)]
+    public void WhereARowOfAReturnToMapRouteStarts(string scope, string name, string anchor, int setup) {
+        SegmentRule rule = Rule(scope, name);
+
+        Assert.Equal((anchor, (StartSetup)setup, StartKind.Room), (rule.Anchor, rule.Setup, rule.Start));
+    }
+
+    // what the three rows 1A's full clear route adds collect
+    [Theory]
+    [InlineData("FC Heart to RTM", (int)Collectibles.Cassette)]
+    [InlineData("FC Crossing to RTM", (int)(Collectibles.Heart | Collectibles.Cassette))]
+    [InlineData("FC Chasm-2", (int)Collectibles.Cassette)]
+    public void WhatAForsakenCityFullClearRowCollects(string name, int requires) {
+        SegmentRule rule = Rule("1a", name);
+
+        Assert.Equal(((Collectibles)requires, 0, Collectibles.None, EndKind.ReturnToMap),
+            (rule.Requires, rule.Gems, rule.EndsOn, rule.End));
+    }
+
+    // the sets the map cannot check here: 4A's, 5A's and 7A's
+    [Fact]
+    public void TheBerrySetsOfTheOtherReturnToMapRoutes() {
+        BerrySet oldTrail = Rule("4a", "ARB Old Trail (to RTM)").Berries;
+        Assert.Equal(("Old Trail", "d-00b", null), (oldTrail.Checkpoint, oldTrail.Rooms.Single(), oldTrail.Except));
+        Assert.Equal(new BerrySet("Start"), Rule("5a", "ARB Start").Berries);
+        BerrySet first = Rule("7a", "ARB 2500m-1").Berries;
+        Assert.Equal(("2500 M", null, "f-01"), (first.Checkpoint, first.Rooms, first.Except.Single()));
+        BerrySet second = Rule("7a", "ARB 2500m-2").Berries;
+        Assert.Equal((null, "f-01", null), (second.Checkpoint, second.Rooms.Single(), second.Except));
+    }
+
+    // 2500m as the map files it (checkpointID 5), and 3000m (6). A run with every berry of 2500m
+    // records the full row and the one that skips f-01, and shows the full one; 7A's last piece
+    // still steps behind 3000m
+    [Fact]
+    public void ARowIsOutdoneByTheRowWhoseBerriesHoldItsOwn() {
+        MapBerry[] summit = [
+            new("f-00", 590, 5), new("f-01", 639, 5), new("f-07", 711, 5), new("f-08b", 856, 5), new("f-08c", 759, 5),
+            new("f-11", 1068, 5), new("f-11", 1229, 5), new("f-11", 1238, 5),
+            new("g-00b", 37, 6), new("g-00b", 114, 6), new("g-00b", 127, 6), new("g-01", 66, 6), new("g-01", 279, 6),
+            new("g-01", 342, 6), new("g-03", 1504, 6),
+        ];
+        IReadOnlyCollection<string> BerriesOf(SegmentRule rule) => rule.Berries == null ? null
+            : BerrySets.Resolve(rule.Berries, summit, name => name == "2500 M" ? 5 : name == "3000 M" ? 6 : -1);
+
+        SegmentRule plain = Rule("7a", "2500m"), full = Rule("7a", "ARB 2500m-full"), first = Rule("7a", "ARB 2500m-1"),
+            fc = Rule("7a", "FC 2500m");
+        Assert.Equal(7, BerriesOf(first).Count);
+        Assert.Same(full, Shown(plain, full, first));
+        Assert.Same(full, Shown(first, full, plain));
+        Assert.Same(first, Shown(plain, first));
+        Assert.Same(fc, Shown(plain, full, first, fc));
+        Assert.Same(Rule("7a", "FC 3000m"),
+            Shown(Rule("7a", "3000m"), Rule("7a", "Nodraft"), Rule("7a", "ARB 3000m"), Rule("7a", "ARB Nodraft"), Rule("7a", "FC 3000m")));
+        Assert.Same(Rule("7a", "ARB 3000m"),
+            Shown(Rule("7a", "3000m"), Rule("7a", "Nodraft"), Rule("7a", "ARB Nodraft"), Rule("7a", "ARB 3000m")));
+
+        SegmentRule Shown(params SegmentRule[] met) => met[Specificity.MostSpecific(met, chapterRun: false, BerriesOf)];
     }
 }
