@@ -62,6 +62,7 @@ internal static class ModMenu {
 
         enabled.Change(on => {
             settings.Enabled = on;
+            RunWatcher.Forget();
             ShowSubOptions(subOptions, forgetUrl, on);
             if (on) {
                 // the startup refresh is skipped while the mod is off, so this

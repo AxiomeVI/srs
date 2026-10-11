@@ -977,4 +977,285 @@ public class RunTrackerTests {
 
         Assert.Equal([("FC IL", 600L)], Of(t.ChapterTimeStopped(600, One)));
     }
+
+    // a Return to Map ends no imported row: everything open is dropped, as
+    // the next level's Restart dropped it before
+    [Fact]
+    public void AReturnToMapDropsEverythingOpenUnrecorded() {
+        Add("Chasm", "9b", null, setup: StartSetup.CurrentRoom);
+        Add("IL", "9b", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "9b", 0, true, false, _ => true);
+
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 300, One));
+        Assert.Empty(t.Open);
+        Assert.Empty(t.ChapterTimeStopped(400, One));
+    }
+
+    // a berry still following counts there, as when chapter time stops
+    [Fact]
+    public void AChapterEndClosesWhatChapterTimeStoppingCloses() {
+        Add("Chasm", "9b", null, setup: StartSetup.CurrentRoom);
+        Add("IL", "9b", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom);
+        Add("ARB Chasm", "9b", null, berries: true, setup: StartSetup.MapSpawn);
+        rooms.Berries["ARB Chasm"] = ["b1", "b2"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "9b", 0, true, false, _ => true);
+        t.BerryCollected("b1");
+
+        Assert.Equal([("Chasm", 400L), ("IL", 400L), ("ARB Chasm", 400L)],
+            Of(t.Left(LeaveKind.ChapterEnd, 400, new EndState(1, ["b2"]))));
+        Assert.Empty(t.Open);
+    }
+
+    // nothing outlives a chapter's end: a row that does not end there is dropped
+    [Fact]
+    public void AChapterEndDropsWhatDoesNotEndThere() {
+        Add("A", "1", "6", setup: StartSetup.CurrentRoom);
+        Add("IL Tape RTM", "1", null, requires: Collectibles.Cassette, endKind: EndKind.Collect,
+            endsOn: Collectibles.Cassette, setup: StartSetup.CurrentRoom);
+        Add("B", "6", null, entry: "5");
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+
+        Assert.Empty(t.Left(LeaveKind.ChapterEnd, 400, One));
+        Assert.Empty(t.Open);
+        Assert.Empty(t.Collected(Collectibles.Cassette, 400, One));
+        Assert.Empty(t.RoomEntered("1a", "5", "6", 400, true, false, One));
+    }
+
+    // a Save and Quit carries the clock. The tracker only takes differences,
+    // so a clock restarted at zero gives the same time
+    [Theory]
+    [InlineData(300)]
+    [InlineData(0)]
+    public void ARowSetAsideByASaveAndQuitCarriesOnAtTheReentry(long resumedAt) {
+        Add("Start", "1", "6", setup: StartSetup.CurrentRoom);
+        Add("Crossing", "6", "9b", entry: "5");
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        Assert.Empty(t.Left(LeaveKind.SaveAndQuit, 300, One));
+        Assert.Empty(t.Open);
+
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "3", resumedAt, true, false, _ => false);
+        Assert.Equal(["Start"], t.Open.Select(r => r.Name));
+        Assert.Equal([("Start", 400L)], Of(t.RoomEntered("1a", "5", "6", resumedAt + 100, true, false, One)));
+        Assert.Equal(["Crossing"], t.Open.Select(r => r.Name));
+    }
+
+    // "nothing at 0 or less" is about the row's whole time: a last piece of no
+    // length still records the pieces before it
+    [Fact]
+    public void ARowEndingOnTheReentryReadingRecordsItsEarlierPieces() {
+        Add("Hollows Tape", "04", null, requires: Collectibles.Cassette, endKind: EndKind.Collect,
+            endsOn: Collectibles.Cassette, setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "04", 0, true, false, _ => true);
+        t.Left(LeaveKind.SaveAndQuit, 300, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "04", 300, true, false, _ => false);
+
+        Assert.Equal([("Hollows Tape", 300L)], Of(t.Collected(Collectibles.Cassette, 300, One)));
+    }
+
+    // what the run collected before the Save and Quit is still the row's
+    [Fact]
+    public void ARowSetAsideKeepsWhatItCollected() {
+        Add("FC Start", "a-00", "b-00", Collectibles.Heart | Collectibles.Gem, berries: true,
+            setup: StartSetup.CurrentRoom, gems: 1);
+        Add("500m", "b-00", null, entry: "a-06");
+        rooms.Berries["FC Start"] = ["b1", "b2"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "a-00", 0, true, false, _ => true);
+        t.Collected(Collectibles.Heart, 50, One);
+        t.Collected(Collectibles.Gem, 60, One);
+        t.BerryCollected("b1");
+        t.Left(LeaveKind.SaveAndQuit, 100, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "a-03", 100, true, false, _ => false);
+        t.BerryCollected("b2");
+
+        Assert.Equal([("FC Start", 250L)], Of(t.RoomEntered("1a", "a-06", "b-00", 250, true, false, One)));
+    }
+
+    [Fact]
+    public void AWholeChapterKeepsItsFirstCheckpointsDashesAcrossASaveAndQuit() {
+        Add("DTS IL", "intro", null, dashes: 2, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom);
+        Add("Singular", "a-00", "c-00", entry: "intro-03-space");
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "intro", 0, true, false, _ => true);
+        t.RoomEntered("1a", "intro-03-space", "a-00", 100, true, false, new EndState(2, []));
+        t.Left(LeaveKind.SaveAndQuit, 150, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "a-00", 150, true, false, _ => false);
+
+        Assert.Equal([("DTS IL", 400L)], Of(t.Left(LeaveKind.ChapterEnd, 400, new EndState(1, []))));
+    }
+
+    [Fact]
+    public void ADisqualifiedRowStaysDisqualifiedAcrossASaveAndQuit() {
+        Add("Final", "04", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "04", 0, true, false, _ => true);
+        t.Disqualify();
+        t.Left(LeaveKind.SaveAndQuit, 50, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "04", 50, true, false, _ => false);
+
+        Assert.Equal(["Final"], t.Open.Select(r => r.Name));
+        Assert.Empty(t.Left(LeaveKind.ChapterEnd, 90, One));
+    }
+
+    // the re-entry lands on the spawn the row started from: it carries on, and
+    // is not started over
+    [Fact]
+    public void ARowCarriedOnIsNotOpenedAgainOnItsOwnSpawn() {
+        Add("ARB Crossing", "6", "9b", berries: true, setup: StartSetup.MapSpawn);
+        Add("Chasm", "9b", null, entry: "9");
+        rooms.Berries["ARB Crossing"] = ["b1"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "6", 10, true, false, _ => true);
+        t.BerryCollected("b1");
+        t.Left(LeaveKind.SaveAndQuit, 50, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "6", 50, false, false, _ => true);
+        t.ControlReturned("6", 50, _ => true);
+
+        Assert.Equal(["ARB Crossing"], t.Open.Select(r => r.Name));
+        Assert.Equal([("ARB Crossing", 90L)], Of(t.RoomEntered("1a", "9", "9b", 100, true, false, One)));
+    }
+
+    // the rows starting on the re-entry's spawn open as on a restart, beside
+    // those carried on; a Next Room row does not
+    [Fact]
+    public void AReentryOpensTheRowsStartingOnItsSpawn() {
+        Add("Start", "1", "6", setup: StartSetup.CurrentRoom);
+        Add("Crossing", "6", "9b", entry: "5");
+        Add("ARB Crossing", "6", "9b", berries: true, setup: StartSetup.MapSpawn);
+        Add("IL", "1", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        t.Left(LeaveKind.SaveAndQuit, 150, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "6", 150, true, false, _ => true);
+
+        Assert.Equal(["IL", "Crossing", "ARB Crossing"], t.Open.Select(r => r.Name));
+    }
+
+    // 2A's route from Pink up: the Save and Quit lands during the wake-up,
+    // before Awake has opened
+    [Fact]
+    public void AWakeUpRowWaitingAtASaveAndQuitOpensAgainOnTheReentry() {
+        RunTracker t = AwakeWaitingForControl();
+
+        t.Left(LeaveKind.SaveAndQuit, 130, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "end_0", 130, false, false, _ => true);
+        Assert.Empty(t.Open);
+        t.ControlReturned("end_0", 190, _ => false);
+
+        Assert.Equal([("Awake", 210L)], Of(t.ChapterTimeStopped(400, One)));
+    }
+
+    [Fact]
+    public void ASaveAndQuitForgetsAStartWaitingForControl() {
+        RunTracker t = AwakeWaitingForControl();
+
+        t.Left(LeaveKind.SaveAndQuit, 130, One);
+        t.ControlReturned("end_0", 160, _ => true);
+
+        Assert.Empty(t.Open);
+    }
+
+    // a pause during the respawn: the level is left again before anything ran
+    [Fact]
+    public void ASecondLeaveBeforeControlAddsNoTime() {
+        Add("Start", "1", "6", setup: StartSetup.CurrentRoom);
+        Add("Crossing", "6", "9b", entry: "5");
+
+        RunTracker t = Tracker();
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.Left(LeaveKind.SaveAndQuit, 300, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "3", 300, false, false, _ => false);
+        t.Left(LeaveKind.SaveAndQuit, 300, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "3", 300, true, false, _ => false);
+        Assert.Equal(["Start"], t.Open.Select(r => r.Name));
+        Assert.Equal([("Start", 400L)], Of(t.RoomEntered("1a", "5", "6", 400, true, false, One)));
+
+        // and with no re-entry between the two
+        RunTracker twice = Tracker();
+        twice.Restart("1a", "1", 0, true, false, _ => true);
+        twice.Left(LeaveKind.SaveAndQuit, 300, One);
+        twice.Left(LeaveKind.SaveAndQuit, 300, One);
+        twice.Reentered(LeaveKind.SaveAndQuit, "1a", "3", 300, true, false, _ => false);
+        Assert.Equal([("Start", 400L)], Of(twice.RoomEntered("1a", "5", "6", 400, true, false, One)));
+    }
+
+    // a state load, a teleport, another level, Restart Chapter: each is a new
+    // attempt, and none brings back what a Save and Quit set aside
+    [Theory]
+    [InlineData("drop")]
+    [InlineData("restart")]
+    [InlineData("load without control")]
+    [InlineData("restart chapter")]
+    public void ANewAttemptForgetsWhatWasSetAside(string how) {
+        Add("Start", "1", "6", setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.Left(LeaveKind.SaveAndQuit, 300, One);
+        switch (how) {
+            case "drop":
+                t.Drop();
+                break;
+            case "restart":
+                t.Restart("1a", "3", 300, true, false, _ => true);
+                break;
+            case "load without control":
+                t.RestartAtAppearance("1a", "3");
+                break;
+            default:
+                t.ChapterRestarted(300, One);
+                break;
+        }
+
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "3", 300, true, false, _ => false);
+        Assert.Empty(t.Open);
+    }
+
+    // the leave is fed inside the frame's update: what the frame feeds after
+    // it finds nothing to close
+    [Fact]
+    public void TheFramesOwnFeedAfterALeaveClosesNothing() {
+        Add("IL", "1", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.Left(LeaveKind.SaveAndQuit, 300, One);
+        Assert.Empty(t.ChapterTimeStopped(300, One));
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "3", 300, true, false, _ => false);
+
+        Assert.Equal([("IL", 500L)], Of(t.ChapterTimeStopped(500, One)));
+    }
+
+    // a room an ending loads can open its row after the leave: the level
+    // entered next does not inherit it
+    [Fact]
+    public void ARowOpenedAfterALeaveDoesNotSurviveTheReentry() {
+        Add("A", "1", null, setup: StartSetup.CurrentRoom);
+        Add("B", "6", null, entry: "5");
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.Left(LeaveKind.ChapterEnd, 400, One);
+        t.RoomEntered("1a", "5", "6", 400, true, false, One);
+        Assert.Equal(["B"], t.Open.Select(r => r.Name));
+
+        t.Reentered(LeaveKind.ChapterEnd, "1a", "9b", 0, true, false, _ => true);
+        Assert.Empty(t.Open);
+    }
 }

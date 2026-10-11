@@ -9,8 +9,9 @@ using Monocle;
 namespace Celeste.Mod.SpeedrunSheet;
 
 // Two rows above Speed Run Tool's timer: the segment's name, over its time,
-// tier, PB gain and delta to the next tier. Shown until the player leaves the
-// room the segment closed in, and not again on coming back.
+// tier, PB gain and delta to the next tier. Shown until the player leaves
+// RunWatcher.LatestRoom (the room the segment closed in, or the one a
+// re-entry that kept it landed in), and not again on coming back.
 public static class TierComparison {
     private static SrsSettings Settings => SrsModule.Settings;
 
@@ -94,11 +95,18 @@ public static class TierComparison {
             dismissedSerial = RunWatcher.LatestSerial;
         }
 
-        // the held sheet times are the current attempt's only
+        // the held sheet times are the current attempt's only. A re-entry
+        // trims the attempt from its head: what stays keeps the time read
+        // when it landed, and is not read again
         IReadOnlyList<(SegmentRecord Record, int Serial)> attempt = RunWatcher.Attempt;
-        int from = attempt.Count > 0 ? attempt[0].Serial : -1;
+        int from = attempt.Count > 0 ? attempt[0].Serial : int.MaxValue;
         if (from != sheetTimesFrom) {
-            sheetTimes.Clear();
+            foreach (int serial in new List<int>(sheetTimes.Keys)) {
+                if (serial < from) {
+                    sheetTimes.Remove(serial);
+                }
+            }
+
             sheetTimesFrom = from;
         }
 
