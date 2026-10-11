@@ -33,14 +33,15 @@ Le code porte ses justifications en commentaires ; ici, seules celles qui dépas
 - **Le jeu change de room sans transition** : chaque réveil (2A `end_0`, 5A et 5B `c-00`, la chute de 6A) pose `Session.Level` et rappelle `LoadLevel` sans `OnTransitionTo` ⇒ jamais de hook de transition : `RunWatcher` classe chaque `LoadLevel` par son intro.
 - `Source/Engine/` — **le moteur, game-free et testé**. `SegmentRules` dérive une `SegmentRule` par ligne des marqueurs du libellé et de `RowTraits` (ce qu'il ne dit pas), en noms de checkpoints jeu, jamais en rooms (elles viennent d'`AreaData`, que seul le thread de jeu lit). `RunTracker` suit **tous les segments qui peuvent tourner à la fois** ; un temps est la différence de deux lectures de `Session.Time` (la fin de chapitre compte la frame d'arrêt). Invariants : `CurrentRoom` (les `Start`, les lignes d'après un réveil) s'ouvre au départ ; `NextRoom` (le reste) **et les lignes d'après un réveil** s'ouvrent à l'entrée de leur 1re room **depuis leur room d'entrée** (`EntryRooms`), cinématique comprise, et le segment qui finit là ne s'y ferme avec un temps que sur cette même entrée ; `MapSpawn` (`RowTraits`) ne s'ouvre que sur le spawn de son checkpoint ; `Restart` lâche tout ; les fermetures passent avant les ouvertures ; **rien à 0 ou moins n'est enregistré**. `Specificity.MostSpecific` choisit, parmi ce qui se ferme ensemble, la règle qui exige tout ce qu'exigent les autres, à part pour les segments et pour les runs de chapitre (`ChapterRun`, `RTM` d'IL compris) : la ligne de tier montre le chapitre, le segment un cran avant. `RoomMap` (**hors** d'`Engine/`, couplé au jeu) résout les rooms **sur le thread de jeu** ; la room de fin d'un segment est la room de départ du suivant.
 - `RunWatcher.cs` — l'adaptateur, en hook `Level.Update`. **Les segments se chronomètrent au temps de chapitre (`Session.Time`), jamais au chrono de SpeedrunTool.** Les pièges :
-  - `Saved` est enregistré auprès du SaveLoad de SpeedrunTool : **un load remet un `Stamp` plus ancien, lu avant `orig`** (SpeedrunTool charge entre deux updates). Chaque load est une nouvelle tentative, plus une frame seulement si « freeze after load » est Off et que le load a son propre fondu.
-  - **Seule une entrée à pied nourrit `RoomEntered`.** Une mort est le `Respawn` de `Level.Reload` ; **tout autre `Respawn` est un téléport de SpeedrunTool**, même sans changer de room (PageDown vers le drapeau suivant du sommet de 7A), donc un `Restart`.
-  - `Saved.From` **reste `start` pendant `StReflectionFall`**, pour que `00` soit entrée depuis `start`, et la chute surveillée de 6A **disqualifie** au lieu de lâcher : Lake s'ouvre quand même.
-  - **Chaque `Restart` teste un point contre les spawns de départ** (`AtStartSpawn`, à 1 px près) : un load avec contrôle teste `Saved.SpawnAt`, et rien si `Saved.Moved` ; un load sans contrôle attend l'apparition qui suit ; le loader, le téléport et la remise à zéro de la 1re room testent `Session.RespawnPoint`.
-  - **`Saved.Moved` est posé à chaque frame éteinte**, sinon un savestate chargé éteint reviendrait immobile.
+  - `Saved` est enregistré auprès du SaveLoad de SpeedrunTool : **un load remet un `Stamp` plus ancien, lu avant `orig`**. Chaque load est une nouvelle tentative, plus une frame si « freeze after load » est Off et qu'il a son fondu.
+  - **Seule une entrée à pied nourrit `RoomEntered`.** Une mort est le `Respawn` de `Level.Reload` ; **tout autre `Respawn` est un téléport de SpeedrunTool**, même dans sa room : un `Restart`.
+  - `Saved.From` **reste `start` pendant `StReflectionFall`**, et la chute surveillée de 6A **disqualifie** au lieu de lâcher : Lake s'ouvre quand même.
+  - **`Restart` et `Reentered` testent un point contre les spawns de départ** (`AtStartSpawn`, à 1 px près) : load avec contrôle, `Saved.SpawnAt`, et rien si `Saved.Moved` ; sans contrôle, l'apparition qui suit ; loader, téléport, 1re room remise à zéro : `Session.RespawnPoint`.
+  - **`Saved.Moved` est posé à chaque frame éteinte** : un savestate chargé éteint n'ouvre rien.
   - **Restart Chapter se voit à `Session.Restart()` sans room** ; un restart de golden nomme sa room et n'en est pas un.
+  - **Quitter le niveau nourrit `Left`** (`Level.OnExit` dans `orig` ; `Completed` qui monte). Le loader suivant n'est une reprise (`Reentered`) qu'après un Save and Quit, même room et même `Session.Time`, ou sur le spawn carte d'un checkpoint du même chapitre, où la ligne de tier reste. Load, mod éteint, téléport l'oublient.
   - **Fraises** : `Strawberry.OnCollect` nourrit le tracker (moon berry comprise), celles qui suivent passent dans `EndState` ; `RoomMap` lit la carte, **non résolu = jamais enregistrée**. Les gems se comptent (`RegisterSummitGem`).
-  - **Sans le SaveLoad de SpeedrunTool, srs n'enregistre rien** (un load n'y serait pas vu), et le Warn le dit.
+  - **Sans le SaveLoad de SpeedrunTool, srs n'enregistre rien** (un load n'y serait pas vu).
 - `Source/Export/` — **export des temps de session vers la copie personnelle de la sheet**, protocole v2 (`band` renvoyé, `version: 2`). **Un export part par requêtes de 25 lignes** (`ExportBatches`), chacune après la réponse de la précédente : le script verrouille.
   - `SessionBests` garde le meilleur **de chaque ligne** (`RunBook`), par nom, pas par checkpoint jeu (sinon `Hollows Tape RTM` passerait pour `Hollows`), **toute la session, tous chapitres** ; l'écran : côté joué, puis ordre de `SheetRows.All`, ARB sous leur côté.
   - **L'écriture est un compare-and-swap** : chaque ligne porte la cellule *brute* lue (`PendingUpdate.RemoteCell`, jamais reformatée : la sheet écrit `1:36.9` là où `TimeFormat` rend `1:36.900`), le script la refuse si elle a bougé.
@@ -48,7 +49,7 @@ Le code porte ses justifications en commentaires ; ici, seules celles qui dépas
   - `TextMenu` : thread de jeu seul ; mod éteint : file vidée, écran fermé. `ExportMenu` reçoit le POST par une file vidée en `Level.Update` ; `ExportUrlMenu` (aussi au titre) par des `volatile` lus en `OnUpdate`.
   - `ExportTarget` écrit l'URL par `AtomicFile` (ne lève jamais, efface le `.tmp` : l'URL).
 - `AppsScript/SETUP.md` — le déploiement du Web App par le joueur. **Le script n'est pas dans ce dépôt** : le template de la sheet le porte (`srsExport.gs`) et lit toutes les bandes des onglets de saisie. Il apparie les lignes **par libellé normalisé**, jamais par position, et aucun test d'ici ne le fait tourner.
-- `TierComparison.cs` — **au-dessus** du timer. Le PB lit `RemoteBests` **une fois** par record, pour qu'un export ne l'ôte pas. Fond : largeur mesurée du texte **moins `FadeLead`** (le dégradé passe *sous* la fin du texte).
+- `TierComparison.cs` — **au-dessus** du timer. Le PB lit `RemoteBests` **une fois** par record, pour qu'un export ne l'ôte pas.
 - `Dialog/English.txt` + `French.txt` — pas de placeholders `{0}` (`Dialog.Clean` efface les accolades) : composer en code. **Exceptions** : `SRS_KEYBIND_TIMEOUT` et `…PAGE_COMBO_HINT`, lus bruts (`Dialog.Get`).
 
 ## Données de la sheet
@@ -86,7 +87,7 @@ Branche `feature/<nom>` ou `fix/<nom>` depuis `dev`, PR vers `dev`, release = me
 
 ## Reste à faire
 
-- **Hors import** : les lignes dont la route revient à la carte et six lignes chapitre (liste : `LeavesTheNotYetSupportedRowsOut`). **Deux lignes ne sont jamais indiscernables** (`NoTwoRulesAreIndistinguishable`) : une ligne plus large se décrit par ce qu'elle *exige* en plus.
+- **Hors import** : les lignes dont la route revient à la carte et cinq lignes chapitre (liste : `LeavesTheNotYetSupportedRowsOut`). **Deux lignes ne sont jamais indiscernables** (`NoTwoRulesAreIndistinguishable`) : une ligne plus large se décrit par ce qu'elle *exige* en plus.
 - **Le progrès de session** (portes, clés, blocs cassés) survit à un retour en arrière, à la debug map sans Ctrl et à un téléport : srs ne s'en protège pas (décision du propriétaire, à repenser).
 
 ## Écarté définitivement
