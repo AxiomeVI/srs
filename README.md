@@ -14,10 +14,12 @@ Options under **Mod Options → Speedrun Sheet**. What changed in each version i
 
 - A segment is recorded when you walk into its first room from the room before it, however you reached that room: a chain, a savestate, the debug map, `console load` or Speedrun Tool's room teleport. Walking in from anywhere else records nothing.
 - A chapter's first segment, and the segment after a wake-up, also start from a savestate made where you appeared in that room, if you had not moved since. A tap of a single frame is a move. Entering a chapter starts its first segment only on the chapter's own spawn.
-- Five all red berries rows and two full clear ones (5A's `FC Depths`, 6A's `FC Hollows (from RTM)`) start only on their checkpoint's own spawn, by picking the checkpoint on the map or from a savestate made there before you moved: walking in does not start them.
+- The all red berries and full clear rows whose route picks a checkpoint on the map (1A's `ARB Crossing-2`, 5A's `FC Depths`, 6A's `FC Hollows (from RTM)` and others) start only on that checkpoint's own spawn, by picking the checkpoint on the map or from a savestate made there before you moved: walking in does not start them.
+- A row whose route ends on a Return to Map (1A's `ARB Start to RTM`, 5A's `ARB Start`, 7A's `ARB 2500m-2` and others) ends when the screen has wiped after you confirm Return to Map.
+- 1A's `ARB Heart to RTM` and `FC Heart to RTM` start when you reappear after a Save and Quit taken once the heart is collected, on the spawn by the heart, or from a savestate made there before you moved. Nothing else starts them.
 - A savestate load or a room teleport starts a new attempt: the segment you were in is not recorded.
 - A Save and Quit followed by Continue does not: the segments you were in carry on, with the time the game counts while the screen wipes. Anything else after a Save and Quit (another file, another chapter, `console load`, closing the game) is a new attempt.
-- The `Heart`, `Tape`, `Gem`, `ARB`, `FC` and `DTS` rows are told apart by what you collected, and in Farewell by the dashes you have left (for its ILs, the dashes you carry into Singular). An `ARB` row needs every red berry it asks for; one still following you at the end counts. An `FC` row needs those berries and what the full clear route collects there: a cassette, a heart, a summit gem, or in Farewell the moon berry. 2A's `Start Heart RC` runs until Restart Chapter.
+- The `Heart`, `Tape`, `Gem`, `ARB`, `FC` and `DTS` rows are told apart by what you collected, and in Farewell by the dashes you have left (for its ILs, the dashes you carry into Singular). An `ARB` row needs every red berry it asks for; one still following you at the end counts, except at a Return to Map, where the game loses it. An `FC` row needs those berries and what the full clear route collects there: a cassette, a heart, a summit gem, or in Farewell the moon berry. 2A's `Start Heart RC` runs until Restart Chapter.
 
 **Hotkeys.** Three, all unbound by default: Toggle Tier Display, Previous Segment and Open Sheet Export. After several checkpoints run in a row, Previous Segment steps the rows above the timer back through the segments of that attempt, and `2/3` before the name says which one is shown. Bind them from **Keybinds**, at the bottom of srs's section. A hotkey can be a combo: all of its keys must be held together.
 
@@ -29,5 +31,5 @@ Options under **Mod Options → Speedrun Sheet**. What changed in each version i
 
 **Known limits.**
 
-- Not every row of the sheet is imported: the all red berries and full clear rows whose route returns to the map, and their chapter rows where the route does, are left out, and so are the `Wake Up` rows.
+- Not every row of the sheet is imported: the all red berries and full clear chapter rows whose route returns to the map are left out, and so are the `Wake Up` rows.
 - srs trusts that your progress in the chapter (opened doors, used keys, broken blocks) is what a real run would have at that point.
