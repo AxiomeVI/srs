@@ -28,6 +28,7 @@ public class SheetConsistencyTests {
     public void EveryStartSetupKeyIsAnImportedAnchor() {
         Assert.All(SegmentAutoDetect.WakeUpSpawns.Keys, key => Assert.Contains(key, Anchors));
         Assert.All(SegmentAutoDetect.SpawnOffsets.Keys, key => Assert.Contains(key, Anchors));
+        Assert.All(SegmentAutoDetect.HeartRespawns, key => Assert.Contains(key, Anchors));
     }
 
     // a row left without an entry room would never open, and the segment before
@@ -313,25 +314,13 @@ public class SheetConsistencyTests {
         // tab/chapter/label
         string[] expected = [
             $"Arb/1a {berry}/1a {berry}",
-            $"Arb/1a {berry}/Chasm-2",
-            $"Arb/1a {berry}/Crossing to RTM",
-            $"Arb/1a {berry}/Crossing-2",
-            $"Arb/1a {berry}/Heart to RTM",
-            $"Arb/1a {berry}/Start to RTM",
             $"Arb/2a {berry}/Wake Up",
-            $"Arb/4a {berry}/Old Trail (to RTM)",
             $"Arb/5a {berry}/5a {berry}",
-            $"Arb/5a {berry}/5a Start",
             $"Arb/5a {berry}/Wake Up",
-            $"Arb/7a {berry}/2500m-1",
-            $"Arb/7a {berry}/2500m-2",
             "ASides/2a CP/Wake Up",
             "ASides/5a CP/Wake Up",
             "BSides/5b/Wake Up",
             "Fc/1afc/1afc",
-            "Fc/1afc/Chasm-2",
-            "Fc/1afc/Crossing to RTM",
-            "Fc/1afc/Heart to RTM",
             "Fc/5afc/5afc",
             "Fc/6afc/6afc",
         ];
@@ -339,5 +328,21 @@ public class SheetConsistencyTests {
             .Select(row => $"{row.Item1}/{row.Item2}/{row.Item3}").Order(StringComparer.Ordinal)];
 
         Assert.Equal(expected.Order(StringComparer.Ordinal), left);
+    }
+
+    // a Heart Respawn row has its room in the tables, and no entry room: it
+    // never opens on a walk-in
+    [Fact]
+    public void EveryHeartRespawnStartHasARoomAndNoEntry() {
+        List<(string, string)> starts = SegmentRules.All.Where(rule => rule.Setup == StartSetup.HeartRespawn)
+            .Select(rule => (rule.Scope, rule.Anchor)).Distinct().Order().ToList();
+
+        Assert.Equal(starts, SegmentAutoDetect.HeartRespawns.Select(key => (key.Scope, key.GameName)).Order().ToList());
+        Assert.All(SegmentAutoDetect.HeartRespawns, key => {
+            Assert.Contains(key, SegmentAutoDetect.StartRoomOverrides.Keys);
+            Assert.DoesNotContain(key, SegmentAutoDetect.EntryRooms.Keys);
+        });
+        Assert.All(SegmentRules.All.Where(rule => rule.Setup == StartSetup.HeartRespawn),
+            rule => Assert.Equal(EndKind.ReturnToMap, rule.End));
     }
 }

@@ -65,6 +65,10 @@ public class SheetLabelsTests {
         AssertRow("2a", "ARB Start", "ARB/Full Clear", $"2a {berry}", "2a Start");
         AssertRow("4a", "ARB Cliff Face (from RTM)", "ARB/Full Clear", $"4a {berry}", "Cliff Face (from RTM)");
         AssertRow("5a", "ARB Depths", "ARB/Full Clear", $"5a {berry}", "Depths");
+        AssertRow("5a", "ARB Start", "ARB/Full Clear", $"5a {berry}", "5a Start");
+        AssertRow("1a", "ARB Heart to RTM", "ARB/Full Clear", $"1a {berry}", "Heart to RTM");
+        AssertRow("4a", "ARB Old Trail (to RTM)", "ARB/Full Clear", $"4a {berry}", "Old Trail (to RTM)");
+        AssertRow("7a", "ARB 2500m-2", "ARB/Full Clear", $"7a {berry}", "2500m-2");
         AssertRow("7a", "ARB 2500m-full", "ARB/Full Clear", $"7a {berry}", "2500m-full");
         AssertRow("8a", "ARB HotM Vertical", "ARB/Full Clear", $"8a {berry}", "HotM Vertical");
         AssertRow("2a", "ARB IL", "ARB/Full Clear", $"2a {berry}", $"2a {berry}");
@@ -149,6 +153,8 @@ public class SheetLabelsTests {
     // rows share one cell
     [Fact]
     public void AFullClearRowIsWrittenWhereTheEntryTabHasIt() {
+        AssertRow("1a", "FC Heart to RTM", "ARB/Full Clear", "1afc", "Heart to RTM");
+        AssertRow("1a", "FC Chasm-2", "ARB/Full Clear", "1afc", "Chasm-2");
         AssertRow("2a", "FC Start", "ARB/Full Clear", "2afc", "2a Start");
         AssertRow("7a", "FC Downdraft", "ARB/Full Clear", "7afc", "Downdraft");
         AssertRow("7a", "FC IL", "ARB/Full Clear", "7afc", "7afc");

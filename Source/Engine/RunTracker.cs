@@ -99,17 +99,21 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// reset, a savestate loaded with control): nothing open is recorded.
     /// The Current Room and map-spawn segments starting in this room then open
     /// where atStart says the player is at their start; nothing else does.
+    /// fromState: the savestate, the only one of the four a Heart Respawn
+    /// segment opens on.
     public void Restart(string scope, string room, long reading, bool control, bool launching,
-        Func<SegmentRule, bool> atStart) {
+        Func<SegmentRule, bool> atStart, bool fromState = false) {
         Drop();
         OpenAt(scope, room, reading, control, launching, standalone: true,
-            rule => rule.Setup != StartSetup.NextRoom && atStart(rule), fromLoad: false);
+            rule => rule.Setup != StartSetup.NextRoom && (fromState || rule.Setup != StartSetup.HeartRespawn)
+                    && atStart(rule),
+            fromLoad: false);
     }
 
     /// A savestate loaded without control (mid-wake-up, mid-respawn, mid-intro):
-    /// nothing open is recorded, and the Current Room and map-spawn segments
-    /// starting in this room wait for the player to appear, where
-    /// ControlReturned tests them.
+    /// nothing open is recorded, and the Current Room, map-spawn and
+    /// heart-respawn segments starting in this room wait for the player to
+    /// appear, where ControlReturned tests them.
     public void RestartAtAppearance(string scope, string room) {
         Drop();
         OpenAt(scope, room, 0, control: false, launching: false, standalone: true,
@@ -141,7 +145,9 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         pendingRoom = null;
         if (entry) {
             OpenAt(scope, room, reading, control, launching, standalone: false,
-                rule => rule.Setup != StartSetup.MapSpawn && Rooms.EntryRoomOf(rule) == from, fromLoad: false);
+                rule => rule.Setup is not (StartSetup.MapSpawn or StartSetup.HeartRespawn)
+                        && Rooms.EntryRoomOf(rule) == from,
+                fromLoad: false);
         }
 
         return records;
@@ -164,12 +170,12 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
 
     // the room the row after `ending` is entered from, on its own route: the
     // first row starting in this room of the same family, berry or plain,
-    // else the first of the other. A map-spawn row follows nothing
+    // else the first of the other. A map-spawn or heart-respawn row follows nothing
     private string SuccessorEntryOf(SegmentRule ending, string scope, string room) {
         string other = null;
         foreach (SegmentRule rule in rules) {
-            if (rule.Scope != scope || rule.Setup == StartSetup.MapSpawn || Rooms.StartRoomOf(rule) != room
-                || Rooms.EntryRoomOf(rule) is not { } entry) {
+            if (rule.Scope != scope || rule.Setup is StartSetup.MapSpawn or StartSetup.HeartRespawn
+                || Rooms.StartRoomOf(rule) != room || Rooms.EntryRoomOf(rule) is not { } entry) {
                 continue;
             }
 
@@ -240,14 +246,21 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             counted, end);
 
     /// The level was left, on this reading. Starts waiting for control are
-    /// forgotten. A chapter's end closes what chapter time stopping closes.
-    /// A Save and Quit then sets every open segment aside with its time so
-    /// far, for Reentered; any other leave drops what is open, unrecorded.
-    /// What is already set aside stays, with no time added.
+    /// forgotten. A chapter's end closes what chapter time stopping closes,
+    /// a Return to Map the segments that end on one. A Save and Quit then
+    /// sets every open segment aside with its time so far, for Reentered;
+    /// any other leave drops what is still open, unrecorded. What is
+    /// already set aside stays, with no time added.
     public List<SegmentRecord> Left(LeaveKind kind, long reading, EndState end) {
         pending.Clear();
         pendingRoom = null;
-        List<SegmentRecord> records = kind == LeaveKind.ChapterEnd ? ChapterTimeStopped(reading, end) : [];
+        List<SegmentRecord> records = kind switch {
+            LeaveKind.ChapterEnd => ChapterTimeStopped(reading, end),
+            // the game loses a berry still following with the level
+            LeaveKind.ReturnToMap => CloseWhere(segment => segment.Rule.End == EndKind.ReturnToMap, reading,
+                end with { FollowingBerries = [] }),
+            _ => [],
+        };
         if (kind == LeaveKind.SaveAndQuit) {
             foreach (OpenSegment segment in open) {
                 segment.Banked += reading - segment.Start;
@@ -264,7 +277,8 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// carries on from this reading; nothing opened since the leave does.
     /// Then the Current Room and map-spawn segments starting in this room
     /// open where atStart says the player is at their start, as on a
-    /// Restart. One carried on is not opened again.
+    /// Restart, and after a Save and Quit the Heart Respawn ones too. One
+    /// carried on is not opened again.
     public void Reentered(LeaveKind kind, string scope, string room, long reading, bool control, bool launching,
         Func<SegmentRule, bool> atStart) {
         open.Clear();
@@ -277,7 +291,9 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
 
         aside.Clear();
         OpenAt(scope, room, reading, control, launching, standalone: true,
-            rule => rule.Setup != StartSetup.NextRoom && atStart(rule), fromLoad: false);
+            rule => rule.Setup != StartSetup.NextRoom
+                    && (kind == LeaveKind.SaveAndQuit || rule.Setup != StartSetup.HeartRespawn) && atStart(rule),
+            fromLoad: false);
     }
 
     /// Restart Chapter left the level, with the old session's last reading: the

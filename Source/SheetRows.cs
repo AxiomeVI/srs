@@ -209,12 +209,19 @@ internal static class SheetRows {
         new(F, "Farewell", "No DTS IL", "Farewell", "No DTS IL", "Start", new(SheetLabels.TabFarewell, "", "No DTS")),
         // the berry tab: a row is its A-side row plus red berries, named
         // "ARB ..." under the A-side chapter. What a label does not say is in
-        // RowTraits. The rows whose route returns to the map are left out
+        // RowTraits, a route that ends on a Return to Map included. The
+        // chapter rows whose route returns to the map are left out
+        new(R, "1a " + Berry, "Start to RTM", "1a", "ARB Start to RTM", "Start"),
         new(R, "1a " + Berry, "Crossing to Heart", "1a", "ARB Crossing to Heart", "Crossing"),
+        new(R, "1a " + Berry, "Crossing to RTM", "1a", "ARB Crossing to RTM", "Crossing"),
         new(R, "1a " + Berry, "Start to Heart", "1a", "ARB Start to Heart", "Start"),
+        // starts on no checkpoint: "Heart" is a virtual one (SegmentAutoDetect.HeartRespawns)
+        new(R, "1a " + Berry, "Heart to RTM", "1a", "ARB Heart to RTM", "Heart"),
         new(R, "1a " + Berry, "Start", "1a", "ARB Start", "Start"),
         new(R, "1a " + Berry, "Crossing", "1a", "ARB Crossing", "Crossing"),
         new(R, "1a " + Berry, "Chasm", "1a", "ARB Chasm", "Chasm"),
+        new(R, "1a " + Berry, "Crossing-2", "1a", "ARB Crossing-2", "Crossing"),
+        new(R, "1a " + Berry, "Chasm-2", "1a", "ARB Chasm-2", "Chasm"),
         new(R, "2a " + Berry, "2a Start", "2a", "ARB Start", "Start"),
         new(R, "2a " + Berry, "Intervention", "2a", "ARB Intervention", "Intervention"),
         new(R, "2a " + Berry, "Awake", "2a", "ARB Awake", "Awake"),
@@ -225,8 +232,10 @@ internal static class SheetRows {
         new(R, "4a " + Berry, "4a Start", "4a", "ARB Start", "Start"),
         new(R, "4a " + Berry, "Shrine", "4a", "ARB Shrine", "Shrine"),
         new(R, "4a " + Berry, "Old Trail", "4a", "ARB Old Trail", "Old Trail"),
+        new(R, "4a " + Berry, "Old Trail (to RTM)", "4a", "ARB Old Trail (to RTM)", "Old Trail"),
         new(R, "4a " + Berry, "Cliff Face (from RTM)", "4a", "ARB Cliff Face (from RTM)", "Cliff Face"),
         new(R, "4a " + Berry, "Cliff Face", "4a", "ARB Cliff Face", "Cliff Face"),
+        new(R, "5a " + Berry, "5a Start", "5a", "ARB Start", "Start"),
         new(R, "5a " + Berry, "Depths", "5a", "ARB Depths", "Depths"),
         new(R, "5a " + Berry, "Unravelling", "5a", "ARB Unravelling", "Unravelling"),
         new(R, "5a " + Berry, "Search", "5a", "ARB Search", "Search"),
@@ -237,6 +246,8 @@ internal static class SheetRows {
         new(R, "7a " + Berry, "1500m", "7a", "ARB 1500m", "1500 M"),
         new(R, "7a " + Berry, "2000m", "7a", "ARB 2000m", "2000 M"),
         new(R, "7a " + Berry, "2500m-full", "7a", "ARB 2500m-full", "2500 M"),
+        new(R, "7a " + Berry, "2500m-1", "7a", "ARB 2500m-1", "2500 M"),
+        new(R, "7a " + Berry, "2500m-2", "7a", "ARB 2500m-2", "2500 M"),
         new(R, "7a " + Berry, "3000m", "7a", "ARB 3000m", "3000 M"),
         new(R, "7a " + Berry, "Downdraft", "7a", "ARB Downdraft", "Downdraft"),
         new(R, "7a " + Berry, "Updraft", "7a", "ARB Updraft", "Updraft"),
@@ -252,6 +263,9 @@ internal static class SheetRows {
         new(R, "7a " + Berry, "7a " + Berry, "7a", "ARB IL", "Start"),
         new(R, "8a " + Berry, "8a " + Berry, "8a", "ARB IL", "Start"),
         // Full Clear: the checkpoints where its route differs from the berry one
+        new(X, "1afc", "Heart to RTM", "1a", "FC Heart to RTM", "Heart"),
+        new(X, "1afc", "Crossing to RTM", "1a", "FC Crossing to RTM", "Crossing"),
+        new(X, "1afc", "Chasm-2", "1a", "FC Chasm-2", "Chasm"),
         new(X, "2afc", "2a Start", "2a", "FC Start", "Start"),
         new(X, "3afc", "Elevator Shaft", "3a", "FC Elevator Shaft", "Elevator Shaft"),
         new(X, "4afc", "4a Start", "4a", "FC Start", "Start"),

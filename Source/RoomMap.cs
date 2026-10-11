@@ -57,6 +57,12 @@ internal sealed class RoomMap : IRoomMap {
                 Logger.Log(LogLevel.Warn, "srs", $"room map: no checkpoint in the first room of {rule.Name} in {scope}: the row never opens");
             }
 
+            if (rule.Setup == StartSetup.HeartRespawn
+                && !(StartRoomOf(rule) is { } heartRoom && session.MapData.Get(heartRoom) is { } heartData
+                     && heartData.Triggers.Exists(trigger => trigger.Name == "changeRespawnTrigger"))) {
+                Logger.Log(LogLevel.Warn, "srs", $"room map: no respawn trigger in the first room of {rule.Name} in {scope}: the row never opens");
+            }
+
             if (rule.Berries != null) {
                 IReadOnlyCollection<string> keys = BerrySets.Resolve(rule.Berries, berries, CheckpointId);
                 berriesByRule[rule.Order] = keys;
@@ -110,10 +116,10 @@ internal sealed class RoomMap : IRoomMap {
         return null;
     }
 
-    // a map-spawn row is never entered; a row with an entry of its own keeps
-    // it (4A's berry Cliff Face), the others take their anchor's
+    // a map-spawn or heart-respawn row is never entered; a row with an entry
+    // of its own keeps it (4A's berry Cliff Face), the others take their anchor's
     public string EntryRoomOf(SegmentRule rule) {
-        if (rule.Scope != scope || rule.Setup == StartSetup.MapSpawn) {
+        if (rule.Scope != scope || rule.Setup is StartSetup.MapSpawn or StartSetup.HeartRespawn) {
             return null;
         }
 

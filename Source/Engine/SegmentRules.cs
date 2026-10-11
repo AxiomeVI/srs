@@ -31,7 +31,11 @@ internal static class SegmentRules {
                               || row.SheetChapter.EndsWith(" IL", StringComparison.Ordinal)
                               || row.Label.EndsWith(" IL", StringComparison.Ordinal)
                               || (row.Tab == StandardsTab.BSides && row.Label.EndsWith(" Clear", StringComparison.Ordinal));
-            EndKind end = traits.EndsOnHeart ? EndKind.Collect : EndOf(row.Label, marked);
+            // before the label: "Crossing to RTM" ends in RTM and requires a
+            // heart, which EndOf would read as an end on the collect
+            EndKind end = traits.EndsOnHeart ? EndKind.Collect
+                : traits.EndsOnReturnToMap ? EndKind.ReturnToMap
+                : EndOf(row.Label, marked);
             // an IL's "RTM" keeps its collect
             if (chapterRun && end == EndKind.NextStart) {
                 end = EndKind.ChapterEnd;
@@ -42,6 +46,7 @@ internal static class SegmentRules {
             BerrySet berries = !berryTab || traits.NoBerries ? null
                 : traits.Berries ?? (chapterRun ? BerrySet.WholeChapter : new BerrySet(row.Anchor));
             StartSetup setup = traits.MapSpawn ? StartSetup.MapSpawn
+                : SegmentAutoDetect.HeartRespawns.Contains(anchor) ? StartSetup.HeartRespawn
                 : row.Anchor == "Start" || SegmentAutoDetect.WakeUpSpawns.ContainsKey(anchor) ? StartSetup.CurrentRoom
                 : StartSetup.NextRoom;
 

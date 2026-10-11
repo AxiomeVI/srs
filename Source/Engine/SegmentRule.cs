@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
@@ -28,6 +29,10 @@ internal enum StartSetup {
     // valid only from the checkpoint's own spawn: the checkpoint loaded from
     // the map, or a savestate there; never by walking in
     MapSpawn,
+    // valid only from the respawn of a Save and Quit taken once the heart is
+    // collected, or from a savestate there; never by walking in, nor on any
+    // other restart or re-entry
+    HeartRespawn,
 }
 
 internal enum EndKind {
@@ -40,6 +45,9 @@ internal enum EndKind {
     Collect,
     // Restart Chapter, on the old session's last reading ("RC" rows)
     Restart,
+    // a Return to Map and nothing else: not a room entry, not chapter time
+    // stopping. A berry still following then is not collected
+    ReturnToMap,
 }
 
 /// How a run of one imported row is detected. Written in game-checkpoint names,
@@ -71,16 +79,30 @@ internal sealed record SegmentRule(
     /// anchor's (SegmentAutoDetect.EntryRooms).
     public string EntryRoom { get; init; }
 
-    /// Whether this rule asks for everything the other asks for.
-    public bool Contains(SegmentRule other) =>
-        (Requires & other.Requires) == other.Requires && (RequiresBerries || !other.RequiresBerries);
+    /// Whether this rule asks for everything the other asks for, its
+    /// berries included. berriesOf resolves a rule's set against the map
+    /// (IRoomMap.BerriesOf); a set that did not resolve holds nothing and is
+    /// held by nothing.
+    public bool Contains(SegmentRule other, Func<SegmentRule, IReadOnlyCollection<string>> berriesOf) {
+        if ((Requires & other.Requires) != other.Requires) {
+            return false;
+        }
+
+        if (!other.RequiresBerries) {
+            return true;
+        }
+
+        return RequiresBerries && berriesOf(this) is { } mine && berriesOf(other) is { } theirs
+               && theirs.All(mine.Contains);
+    }
 }
 
 internal static class Specificity {
     /// The index of the most specific rule among the chapter runs, or among
     /// the segments: the first in sheet order that no other asks more than.
-    /// -1 when there is none of that kind.
-    public static int MostSpecific(IReadOnlyList<SegmentRule> rules, bool chapterRun) {
+    /// -1 when there is none of that kind. berriesOf: SegmentRule.Contains.
+    public static int MostSpecific(IReadOnlyList<SegmentRule> rules, bool chapterRun,
+        Func<SegmentRule, IReadOnlyCollection<string>> berriesOf) {
         int best = -1;
         for (int i = 0; i < rules.Count; i++) {
             if (rules[i].ChapterRun != chapterRun) {
@@ -90,7 +112,7 @@ internal static class Specificity {
             bool outdone = false;
             for (int j = 0; j < rules.Count && !outdone; j++) {
                 outdone = rules[j].ChapterRun == chapterRun
-                          && rules[j].Contains(rules[i]) && !rules[i].Contains(rules[j]);
+                          && rules[j].Contains(rules[i], berriesOf) && !rules[i].Contains(rules[j], berriesOf);
             }
 
             if (!outdone && (best < 0 || rules[i].Order < rules[best].Order)) {
