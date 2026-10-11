@@ -29,13 +29,26 @@ internal readonly record struct EndState(int Dashes, IReadOnlyCollection<string>
 /// A closed segment whose requirements the run met, with its time.
 internal readonly record struct SegmentRecord(SegmentRule Rule, long Ticks);
 
+/// How the level was left.
+internal enum LeaveKind {
+    // the saved session can be resumed where it stopped
+    SaveAndQuit,
+    ReturnToMap,
+    // Completed turned true: the level goes on to its ending, and nothing
+    // open outlives it
+    ChapterEnd,
+}
+
 /// Every segment that can be running, at once. RunWatcher feeds it the game's
 /// events with chapter-time readings (`Session.Time` ticks: only a difference
 /// of two is a time); each event returns what it closed.
 internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap rooms) {
     private sealed class OpenSegment(SegmentRule rule, long start) {
         public readonly SegmentRule Rule = rule;
-        public readonly long Start = start;
+        // the reading its current piece started on: a re-entry moves it
+        public long Start = start;
+        // chapter time of the pieces before a Save and Quit
+        public long Banked;
         public Collectibles Collected;
         public int Gems;
         public readonly HashSet<string> Berries = [];
@@ -46,6 +59,9 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     }
 
     private readonly List<OpenSegment> open = [];
+    // set aside by a Save and Quit, each with all it holds, until the level
+    // is entered again or a new attempt forgets them
+    private readonly List<OpenSegment> aside = [];
     // starts reached without control, waiting for it to come back in
     // pendingRoom. FromLoad: a savestate loaded without control, whose start
     // is tested where the player appears
@@ -58,9 +74,11 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// For the tests.
     public IEnumerable<SegmentRule> Open => open.Select(segment => segment.Rule);
 
-    /// The timeline changed under the open segments: nothing open is recorded.
+    /// The timeline changed under the open segments: nothing open or set
+    /// aside is recorded.
     public void Drop() {
         open.Clear();
+        aside.Clear();
         pending.Clear();
         pendingRoom = null;
     }
@@ -221,6 +239,47 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
                        || (segment.Rule.End == EndKind.NextStart && Rooms.EndRoomOf(segment.Rule) == null),
             counted, end);
 
+    /// The level was left, on this reading. Starts waiting for control are
+    /// forgotten. A chapter's end closes what chapter time stopping closes.
+    /// A Save and Quit then sets every open segment aside with its time so
+    /// far, for Reentered; any other leave drops what is open, unrecorded.
+    /// What is already set aside stays, with no time added.
+    public List<SegmentRecord> Left(LeaveKind kind, long reading, EndState end) {
+        pending.Clear();
+        pendingRoom = null;
+        List<SegmentRecord> records = kind == LeaveKind.ChapterEnd ? ChapterTimeStopped(reading, end) : [];
+        if (kind == LeaveKind.SaveAndQuit) {
+            foreach (OpenSegment segment in open) {
+                segment.Banked += reading - segment.Start;
+                aside.Add(segment);
+            }
+        }
+
+        open.Clear();
+        return records;
+    }
+
+    /// The level that was left is entered again; RunWatcher says which level
+    /// from the loader is one, and which leave it answers. What was set aside
+    /// carries on from this reading; nothing opened since the leave does.
+    /// Then the Current Room and map-spawn segments starting in this room
+    /// open where atStart says the player is at their start, as on a
+    /// Restart. One carried on is not opened again.
+    public void Reentered(LeaveKind kind, string scope, string room, long reading, bool control, bool launching,
+        Func<SegmentRule, bool> atStart) {
+        open.Clear();
+        pending.Clear();
+        pendingRoom = null;
+        foreach (OpenSegment segment in aside) {
+            segment.Start = reading;
+            open.Add(segment);
+        }
+
+        aside.Clear();
+        OpenAt(scope, room, reading, control, launching, standalone: true,
+            rule => rule.Setup != StartSetup.NextRoom && atStart(rule), fromLoad: false);
+    }
+
     /// Restart Chapter left the level, with the old session's last reading: the
     /// segments ending on it close, and everything else open is dropped
     /// unrecorded. The new level's Restart then opens what starts there.
@@ -293,7 +352,8 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     // the time, or null when the run did not meet the row's requirements
     private long? Met(OpenSegment segment, long reading, EndState end) {
         SegmentRule rule = segment.Rule;
-        long elapsed = reading - segment.Start;
+        // the row's whole time: a piece of no length still records the others
+        long elapsed = segment.Banked + reading - segment.Start;
         if (elapsed <= 0
             || (segment.Collected & rule.Requires) != rule.Requires
             || segment.Gems < rule.Gems
