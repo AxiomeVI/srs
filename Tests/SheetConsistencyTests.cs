@@ -313,16 +313,11 @@ public class SheetConsistencyTests {
         string berry = "\U0001F353";
         // tab/chapter/label
         string[] expected = [
-            $"Arb/1a {berry}/1a {berry}",
             $"Arb/2a {berry}/Wake Up",
-            $"Arb/5a {berry}/5a {berry}",
             $"Arb/5a {berry}/Wake Up",
             "ASides/2a CP/Wake Up",
             "ASides/5a CP/Wake Up",
             "BSides/5b/Wake Up",
-            "Fc/1afc/1afc",
-            "Fc/5afc/5afc",
-            "Fc/6afc/6afc",
         ];
         string[] left = [.. RawRows.Where(row => !imported.Contains(row))
             .Select(row => $"{row.Item1}/{row.Item2}/{row.Item3}").Order(StringComparer.Ordinal)];

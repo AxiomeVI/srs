@@ -79,6 +79,10 @@ internal sealed record SegmentRule(
     /// anchor's (SegmentAutoDetect.EntryRooms).
     public string EntryRoom { get; init; }
 
+    /// A chapter row whose route returns to the map: a Return to Map and a
+    /// chapter's end it does not finish on set it aside (RunTracker.Left).
+    public bool SpansLeaves { get; init; }
+
     /// Whether this rule asks for everything the other asks for, its
     /// berries included. berriesOf resolves a rule's set against the map
     /// (IRoomMap.BerriesOf); a set that did not resolve holds nothing and is
