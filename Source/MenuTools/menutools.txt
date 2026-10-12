@@ -1,0 +1,17 @@
+# Files copied from CelesteMenuTools by its tools/vendor.sh.
+# Don't edit them here. Re-vendor with: tools/vendor.sh --update <this folder>
+commit: 74ea0864cbb032e29c00f8a0f87748503e468a05
+namespace: Celeste.Mod.SpeedrunSheet.MenuTools
+names: RecursiveSubMenu RecursiveNakedSubMenu
+dialog: ../../Dialog
+dialog-prefix: SPEEDRUN_SHEET_MENUTOOLS_
+license: 2919806600 1089
+file: IInputHoldingItem.cs
+file: RecursiveNakedSubMenu.cs
+file: RecursiveSubMenu.cs
+file: RecursiveSubMenuBase.cs
+file: LICENSE
+sum: IInputHoldingItem.cs 1434030333 3773
+sum: RecursiveNakedSubMenu.cs 2304101203 4696
+sum: RecursiveSubMenu.cs 2323460168 7243
+sum: RecursiveSubMenuBase.cs 1695726109 128431

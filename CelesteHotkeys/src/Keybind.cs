@@ -17,6 +17,12 @@ internal sealed class Keybind<TSettings> where TSettings : class {
     /// <summary>Dialog id of the row's label, drawn in both sections and on the recording overlay.</summary>
     public string LabelId { get; }
 
+    /// <summary>
+    ///     Dialog id of a line saying what the hotkey does, shown under the row while it is selected.
+    ///     Null for none.
+    /// </summary>
+    public string DescriptionId { get; }
+
     /// <summary>Name of the ButtonBinding property on <typeparamref name="TSettings"/>.</summary>
     public string Property { get; }
 
@@ -27,8 +33,9 @@ internal sealed class Keybind<TSettings> where TSettings : class {
     ///     index. Thrown at construction, so a bad row fails when the table is built — at load, and in
     ///     the unit suite — rather than the first time someone opens the screen.
     /// </exception>
-    public Keybind(string labelId, string property) {
+    public Keybind(string labelId, string property, string descriptionId = null) {
         LabelId = labelId;
+        DescriptionId = descriptionId;
         Property = property;
 
         PropertyInfo info = typeof(TSettings).GetProperty(property, BindingFlags.Public | BindingFlags.Instance);

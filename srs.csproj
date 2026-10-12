@@ -33,7 +33,8 @@
     </ItemDefinitionGroup>
 
     <ItemGroup>
-        <Reference Include="$(CelestePrefix)/Celeste.dll" />
+        <!-- the vendored menu components (Source/MenuTools) read private members of Celeste -->
+        <PackageReference Include="CelesteMod.Publicizer" Version="1.1.2" CelesteAssembly="$(CelestePrefix)/Celeste.dll" PrivateAssets="all" ExcludeAssets="runtime" />
         <Reference Include="$(CelestePrefix)/FNA.dll" />
         <Reference Include="$(CelestePrefix)/MMHOOK_Celeste.dll" />
         <Reference Include="$(CelestePrefix)/MonoMod.Utils.dll" />

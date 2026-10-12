@@ -1,14 +1,13 @@
 # srs — Contexte & architecture
 
 Mod Everest **Speedrun Sheet** (`srs`), dépendant de SpeedrunTool : importe les temps de référence d'une practice sheet communautaire (Google Sheets → CSV local) et colore le temps final d'un segment (temps de chapitre, affiché au-dessus du room timer de SpeedrunTool) selon les paliers de la sheet.
-`README.md` : **notes d'utilisation** (changelog : checklist, 7).
 
 ## Build
 
 - .NET 8, projet unique `srs.csproj`. Ici : `~/.dotnet/dotnet build -p:CelestePrefix="$HOME/.steam/steam/steamapps/common/Celeste"`.
-- `SpeedrunTool.dll` extraite du `SpeedrunTool.zip` installé (cible `ExtractSpeedrunToolDll`), version épinglée dans `everest.yaml` ; sans zip, une `SpeedrunTool.dll` déjà extraite dans `$(CelestePrefix)` sert de référence. Pas de Publicizer : tout passe par le ModInterop et les classes publiques.
+- `SpeedrunTool.dll` extraite du `SpeedrunTool.zip` installé (cible `ExtractSpeedrunToolDll`), version épinglée dans `everest.yaml` ; sans zip, celle déjà extraite dans `$(CelestePrefix)` sert. `CelesteMod.Publicizer` (NuGet) sert `Source/MenuTools/` seul : srs s'en tient au ModInterop et aux classes publiques.
 - Cible `OutputAsModStructure` : génère `build/` (`bin/` DLL+PDB, `everest.yaml`, `Dialog/`) → **à zipper** dans `<Celeste>/Mods/`, et copie la DLL dans `bin/` à la racine du repo. **Le sous-dossier `bin/` est celui qu'`everest.yaml` désigne** (`DLL: bin/srs.dll`) : le déplacer sans toucher au yaml fait échouer le chargement du module, sans rien dire.
-- `<Compile Remove="Tests/**" />` dans le csproj : **ne pas retirer** (le SDK globbe `**/*.cs`, sans ça les sources de test partiraient dans `srs.dll`).
+- `<Compile Remove="Tests/**" />` dans le csproj : **ne pas retirer** (sinon les tests partent dans `srs.dll`).
 
 ## Tests
 
@@ -22,7 +21,7 @@ Le code porte ses justifications en commentaires ; ici, seules celles qui dépas
 
 - `SrsModule.cs` — **L'ordre des `Load()` fixe l'ordre des hooks `Level.Update`** : chaque Load enveloppe les précédents, donc après `orig` la frame déroule `Hotkeys`, `RunWatcher`, `TierComparison`, puis `ExportMenu`. **Aucun `Load()` ne peut passer devant `Hotkeys`** : les deux derniers lisent un `Pressed` de la frame courante. **Toute sauvegarde des settings passe par `SrsModule.TrySaveSettings`** : `SaveSettings` d'Everest lève, et un appel nu depuis un menu ou un hook fait planter le jeu.
 - **Master switch** : `Settings.Enabled` est un gate runtime, jamais un `Unload` — les hooks restent posés et chaque handler sort en tête (`TierComparison` Update *et* Render ; `ExportMenu` ferme en plus l'écran). Le premier frame nourri après un rallumage **lâche** ce qui était ouvert. Éteint, `SheetImporter.Load()` ne rafraîchit pas ; rallumer le relance.
-- `Source/UI/` — les hotkeys viennent de **CelesteHotkeys**, **copié** dans `CelesteHotkeys/src/` par son `tools/vendor.sh` (commit `chore: CelesteHotkeys <sha>`, jamais un submodule : le dépôt source est privé). **Ne pas modifier la copie ici** : corriger dans CelesteHotkeys puis re-vendoriser. Le module lit un `ButtonBinding` comme un **combo** et fournit l'écran. **Règle propre à srs** (`Hotkeys.Pressed`) : niveau en pause, seule la hotkey d'export répond, et seulement derrière la pause que l'écran d'export tient lui-même. `ModMenu` construit **toute** la section, le bouton des raccourcis en dernier à la racine ; tout est `[SettingIgnore]`, pour que le master switch masque chaque entrée.
+- `Source/UI/` — les hotkeys viennent de **CelesteHotkeys**, **copié** dans `CelesteHotkeys/src/` par son `tools/vendor.sh` (commit `chore: CelesteHotkeys <sha>`, jamais un submodule). **Ne pas modifier la copie ici** : corriger dans CelesteHotkeys puis re-vendoriser. Le module lit un `ButtonBinding` comme un **combo** et fournit l'écran. **Règle propre à srs** (`Hotkeys.Pressed`) : niveau en pause, seule la hotkey d'export répond, et seulement derrière la pause que l'écran d'export tient lui-même. `ModMenu` construit **toute** la section (tout est `[SettingIgnore]`) en sous-menus de **CelesteMenuTools**, copiés dans `Source/MenuTools/` (son `vendor.sh`, `LICENSE` MIT jointe ; même règle). En groupe : `AddItem`, `SetItemVisible`, `RecalculateSize` si une ligne change de taille. Le bouton des raccourcis reste à la racine.
 - **`Keys.None` ne doit jamais entrer dans un binding** : FNA le renvoie pour toute touche absente de sa table SDL→XNA (le `)` en AZERTY) puis le rapporte tenu ⇒ `Bindable.Sanitize` dans `Hotkeys.Load()` nettoie le disque, et l'écran du module le refuse à la capture, avec F1/F2/F3/F5.
 - `SheetUrls.cs` — **game-free** : `Migrate` substitue **l'id seul** du classeur gelé dans une URL stockée (copie Drive : les gids restent valables). Appelé depuis `SrsModule.LoadSettings()` après `base.LoadSettings()` : repointer les constantes seules ne déplace aucun joueur ayant déjà sauvegardé (sérialisées bien que `[SettingIgnore]`). Les défauts de `SrsSettings` sont construits sur `EditUrlPrefix`, pour ne pas diverger de la cible de la migration.
 - `SheetData.cs` — **game-free** : CSV RFC 4180, temps `[hh:][mm:]ss[.fff]` en culture invariante, modèle bloc/segment. Ne lève jamais d'exception sur contenu malformé.
@@ -70,7 +69,7 @@ Le code porte ses justifications en commentaires ; ici, seules celles qui dépas
 - **Le format des temps est celui de SpeedrunTool, atteint par réflexion** (`SrsModule.AdoptSpeedrunToolsTimeFormat`, avant tout le reste du `Load`). **srs ne garde aucune copie du format** (sauf dès une heure, que SpeedrunTool n'écrit pas : `TimeFormat.WithHours`) : si la recherche échoue, `Load` lève — un second formateur dériverait en silence et écrirait dans la sheet un temps qui ne correspond plus au timer (décision maintenue : ne pas proposer de formateur local). La doublure des tests (`Tests/TimeFormatStandIn.cs`) **n'est pas une spécification** : n'y adosser aucune assertion sur une chaîne de temps exacte.
 - ModInterop `SpeedrunTool.SaveLoad` : **l'état statique qui décrit l'état de jeu et est muté en gameplay doit y être enregistré** (`RegisterStaticTypes`) sous peine de desync ; `RunWatcher` n'y enregistre que `Saved`. **Ce qui décrit la *session* en est exclu, volontairement** (`SessionBests`, `RemoteBests`) : la question est « un retour en arrière du jeu doit-il l'annuler ? ». Ne pas écrire qu'un load restaure `Session.Time` : sous `SaveTimeAndDeaths` off il garde le plus grand des deux ; aucun temps ne traverse un load.
 - **Téléport de room** : `LoadLevel(Respawn)` sans loader, `Session.Time` jamais baissé, **puis `level.Update()` direct depuis sa hotkey (dans `MInput.Update`) : tous les hooks `Level.Update` de srs tournent deux fois sur cette frame**, à la suite : `RunWatcher` n'est pas réentrant. Rien d'autre ne signale le téléport, d'où `teleported` dans `RunWatcher`.
-- **Pris hors interop, donc à revérifier à chaque release de SpeedrunTool** : `SpeedrunToolSettings.Instance` (`RoomTimerType`, `FreezeAfterLoadStateType`), `PopupMessageUtils`, `DialogIds`, `RoomTimerData.FormatTime` par réflexion, le comportement de `TeleportRoomUtils`, et le refus d'un load pendant la pause (dont `ExportMenu` dépend). Rien ne les enveloppe : un renommage casse srs.
+- **Pris hors interop, donc à revérifier à chaque release de SpeedrunTool** : `SpeedrunToolSettings.Instance` (`RoomTimerType`, `FreezeAfterLoadStateType`), `PopupMessageUtils`, `RoomTimerData.FormatTime` par réflexion, le comportement de `TeleportRoomUtils`, et le refus d'un load pendant la pause (dont `ExportMenu` dépend). Rien ne les enveloppe : un renommage casse srs.
 
 ## Checklist « nouvelle fonctionnalité »
 
@@ -79,7 +78,7 @@ Le code porte ses justifications en commentaires ; ici, seules celles qui dépas
 3. Réseau → jamais sur le thread de jeu, timeout, erreurs loggées jamais levées. **`ExportTarget.Url` n'entre dans aucun log, aucun message, aucun champ pré-rempli : l'URL *est* le credential du Web App.** Elle vit dans `Saves/srs/export-url.txt`, **jamais dans le fichier de settings**, que les joueurs partagent. Une tâche de fond ne construit ni ne détruit d'item de `TextMenu` ; muter le `Label` d'un item existant est sûr.
 4. État statique décrivant l'état de jeu et muté en gameplay → interop `SpeedrunTool.SaveLoad`. Ce qui décrit la session s'en exclut.
 5. Logique game-free → test dans `Tests/` ; une table hardcodée touchée ⇒ `SheetConsistencyTests` et `SegmentRulesTests` doivent passer. Ne pas écrire de nombre ici.
-6. Build, zipper `build/` dans `<Celeste>/Mods/`, tester en jeu.
+6. Build, tester en jeu.
 7. `CHANGELOG.md` (+ bump `Version` dans `everest.yaml` si release).
 
 ## Workflow git

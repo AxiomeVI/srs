@@ -2,21 +2,20 @@ using Celeste.Mod.CelesteHotkeys;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
-// the three rebindable hotkeys, as a CelesteHotkeys table polled once per
+// the two rebindable hotkeys, as a CelesteHotkeys table polled once per
 // frame. The module reads a binding as a combo, which Everest's key config
 // screen cannot express: every binding is [SettingIgnore] and bound from the
 // module's own screen (ModMenu)
 public static class Hotkeys {
-    internal static readonly Keybind<SrsSettings> ToggleShowTier =
-        new("MODOPTIONS_SRS_TOGGLESHOWTIER", nameof(SrsSettings.ToggleShowTier));
     internal static readonly Keybind<SrsSettings> OpenExportMenu =
         new("MODOPTIONS_SRS_OPENEXPORTMENU", nameof(SrsSettings.OpenExportMenu));
 
     internal static readonly Keybind<SrsSettings> PreviousSegment =
-        new("MODOPTIONS_SRS_PREVIOUSSEGMENT", nameof(SrsSettings.PreviousSegment));
+        new("MODOPTIONS_SRS_PREVIOUSSEGMENT", nameof(SrsSettings.PreviousSegment),
+            "MODOPTIONS_SRS_PREVIOUSSEGMENT_DESC");
 
     internal static readonly Keybind<SrsSettings>[] All =
-        [ToggleShowTier, PreviousSegment, OpenExportMenu];
+        [PreviousSegment, OpenExportMenu];
 
     internal static readonly HotkeySet<SrsSettings> Set = new(() => SrsModule.Settings, All);
 
