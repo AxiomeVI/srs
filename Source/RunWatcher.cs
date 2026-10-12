@@ -624,7 +624,8 @@ public static class RunWatcher {
     // frame was fed or inside orig; chapter time stands still from Split to
     // its outcome. Gated like a collect.
     // A Save and Quit split is a leave only once it loads: one that stays
-    // changes nothing. A Return to Map split is one where it lands, list or
+    // closes nothing, but leaves what is open unsure of its note.
+    // A Return to Map split is one where it lands, list or
     // not, unless a chapter's end pends, which it would replace
     private static void OnSplitStage(string action, string stage, ulong _) {
         if (Engine.Scene is not Level level || afterEnding
@@ -632,7 +633,9 @@ public static class RunWatcher {
             return;
         }
 
-        if (action == "SaveAndQuit" && stage == "Loading") {
+        if (action == "SaveAndQuit" && stage == "Stayed") {
+            tracker.SplitStayed();
+        } else if (action == "SaveAndQuit" && stage == "Loading") {
             FeedLeave(level, LeaveKind.SaveAndQuit);
         } else if (action == "ReturnToMap" && stage == "Split" && leave == null) {
             FeedLeave(level, LeaveKind.ReturnToMap, noLoadYet: true);
@@ -748,6 +751,14 @@ public static class RunWatcher {
     private static void Emit(Session session, List<SegmentRecord> records) {
         if (records.Count == 0) {
             return;
+        }
+
+        // a split of an older SomeSplitButtons reports nothing: no record can
+        // vouch for its note, so none claims one
+        if (SplitImports.InteropVersion != null && !observing) {
+            for (int i = 0; i < records.Count; i++) {
+                records[i] = records[i] with { Note = SaveAndQuitNote.Unknown };
+            }
         }
 
         SessionBests.Record(records, session);

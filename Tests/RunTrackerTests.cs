@@ -25,9 +25,11 @@ public class RunTrackerTests {
     private SegmentRule Add(string name, string start, string end, Collectibles requires = Collectibles.None,
         EndKind endKind = EndKind.NextStart, Collectibles endsOn = Collectibles.None, int? dashes = null,
         StartKind startKind = StartKind.Room, StartSetup setup = StartSetup.NextRoom, long head = 0, long tail = 0,
-        bool berries = false, string scope = "1a", string entry = null, int gems = 0, bool spans = false) {
+        bool berries = false, string scope = "1a", string entry = null, int gems = 0, bool spans = false,
+        bool afterWakeUp = false, bool noNote = false) {
         SegmentRule rule = new(scope, name, name, startKind, setup, endKind, endsOn, requires, dashes,
-            head, tail, rules.Count) { Berries = berries ? BerrySet.WholeChapter : null, Gems = gems, SpansLeaves = spans };
+            head, tail, rules.Count) { Berries = berries ? BerrySet.WholeChapter : null, Gems = gems, SpansLeaves = spans,
+                AfterWakeUp = afterWakeUp, NoSaveAndQuitNote = noNote };
         rules.Add(rule);
         rooms.ByName[name] = (start, end);
         if (entry != null) {
@@ -40,6 +42,8 @@ public class RunTrackerTests {
     private RunTracker Tracker() => new(rules, rooms);
 
     private static readonly EndState One = new(1, []);
+
+    private static SaveAndQuitNote NoteOf(List<SegmentRecord> records) => Assert.Single(records).Note;
 
     private static List<(string, long)> Of(List<SegmentRecord> records) =>
         records.Select(r => (r.Rule.Name, r.Ticks)).ToList();
@@ -1795,5 +1799,213 @@ public class RunTrackerTests {
         t.ClockZeroed("1a", "1", 80, 0, true, false, _ => true);
 
         Assert.Equal([("ARB IL", 300L)], Of(t.Left(LeaveKind.ChapterEnd, 300, One)));
+    }
+
+    // the Save and Quit note: what opened the row, and what carried it on
+
+    [Fact]
+    public void ARowWithNoLeaveIsWithoutASaveAndQuit() {
+        Add("Start", "1", null, setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+
+        Assert.Equal(SaveAndQuitNote.Without, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void ARowResumedByASaveAndQuitReentryIsWith() {
+        Add("Start", "1", null, setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.Left(LeaveKind.SaveAndQuit, 100, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "3", 100, true, false, _ => false);
+
+        Assert.Equal(SaveAndQuitNote.With, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void AWakeUpRowOpenedByASaveAndQuitReentryIsWith() {
+        Add("Awake", "1", null, setup: StartSetup.CurrentRoom, afterWakeUp: true);
+        RunTracker t = Tracker();
+
+        t.Left(LeaveKind.SaveAndQuit, 100, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 100, true, false, _ => true);
+
+        Assert.Equal(SaveAndQuitNote.With, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void AWakeUpRowWalkedIntoIsWithout() {
+        Add("Awake", "6", null, setup: StartSetup.CurrentRoom, afterWakeUp: true, entry: "5");
+        RunTracker t = Tracker();
+
+        t.RoomEntered("1a", "5", "6", 100, false, false, One);
+        t.ControlReturned("6", 120, _ => true);
+
+        Assert.Equal(SaveAndQuitNote.Without, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void AWakeUpRowOpenedByARestartIsUnknown() {
+        Add("Awake", "1", null, setup: StartSetup.CurrentRoom, afterWakeUp: true);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+
+        Assert.Equal(SaveAndQuitNote.Unknown, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void AWakeUpRowOpenedAtTheAppearanceOfASavestateIsUnknown() {
+        Add("Awake", "1", null, setup: StartSetup.CurrentRoom, afterWakeUp: true);
+        RunTracker t = Tracker();
+
+        t.RestartAtAppearance("1a", "1");
+        t.ControlReturned("1", 50, _ => true);
+
+        Assert.Equal(SaveAndQuitNote.Unknown, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void AWakeUpRowOpenedByAReentryAfterAReturnToMapIsUnknown() {
+        Add("Awake", "1", null, setup: StartSetup.CurrentRoom, afterWakeUp: true);
+        RunTracker t = Tracker();
+
+        t.Left(LeaveKind.ReturnToMap, 100, One);
+        t.Reentered(LeaveKind.ReturnToMap, "1a", "1", 0, true, false, _ => true);
+
+        Assert.Equal(SaveAndQuitNote.Unknown, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void AWakeUpRowWaitingForControlAfterASaveAndQuitReentryIsWith() {
+        Add("Awake", "1", null, setup: StartSetup.CurrentRoom, afterWakeUp: true);
+        RunTracker t = Tracker();
+
+        t.Left(LeaveKind.SaveAndQuit, 100, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 100, false, false, _ => true);
+        Assert.Empty(t.Open);
+        t.ControlReturned("1", 140, _ => true);
+
+        Assert.Equal(SaveAndQuitNote.With, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    // the Save and Quit was before the row, not in it
+    [Fact]
+    public void AStartRowOpenedByASaveAndQuitReentryIsWithout() {
+        Add("Start", "1", null, setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Left(LeaveKind.SaveAndQuit, 100, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 100, true, false, _ => true);
+
+        Assert.Equal(SaveAndQuitNote.Without, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void ASplitThatStayedLeavesTheNoteUnknown() {
+        Add("Start", "1", null, setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.SplitStayed();
+
+        Assert.Equal(SaveAndQuitNote.Unknown, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void ASplitThatStayedDoesNotUndoAResumedRow() {
+        Add("Start", "1", null, setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.Left(LeaveKind.SaveAndQuit, 100, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "3", 100, true, false, _ => false);
+        t.SplitStayed();
+
+        Assert.Equal(SaveAndQuitNote.With, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void ASplitThatStayedTurnsAWaitingStartToAnotherOpening() {
+        Add("Awake", "1", null, setup: StartSetup.CurrentRoom, afterWakeUp: true);
+        RunTracker t = Tracker();
+
+        t.Left(LeaveKind.SaveAndQuit, 100, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 100, false, false, _ => true);
+        t.SplitStayed();
+        t.ControlReturned("1", 140, _ => true);
+
+        Assert.Equal(SaveAndQuitNote.Unknown, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void AWakeUpRowWalkedIntoAndOpenIsUnknownAfterASplitThatStayed() {
+        Add("Awake", "6", null, setup: StartSetup.CurrentRoom, afterWakeUp: true, entry: "5");
+        RunTracker t = Tracker();
+
+        t.RoomEntered("1a", "5", "6", 100, false, false, One);
+        t.ControlReturned("6", 120, _ => true);
+        t.SplitStayed();
+
+        Assert.Equal(SaveAndQuitNote.Unknown, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void ARowWithNoNoteIsUnknownEvenWhenResumed() {
+        Add("ARB Start to Heart", "1", null, setup: StartSetup.CurrentRoom, noNote: true);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.Left(LeaveKind.SaveAndQuit, 100, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "3", 100, true, false, _ => false);
+
+        Assert.Equal(SaveAndQuitNote.Unknown, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void ASpanningRowResumedAfterAReturnToMapOnlyIsWithout() {
+        Add("FC IL", "start", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom, spans: true);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "start", 0, true, false, _ => true);
+        t.RoomEntered("1a", "03", "04", 150, true, false, One);
+        t.Left(LeaveKind.ReturnToMap, 300, One);
+        t.Reentered(LeaveKind.ReturnToMap, "1a", "04", 0, true, false, _ => false);
+
+        Assert.Equal(SaveAndQuitNote.Without, NoteOf(t.Left(LeaveKind.ChapterEnd, 500, One)));
+    }
+
+    [Fact]
+    public void ASpanningRowKeptThroughAZeroedClockStaysWithout() {
+        Add("ARB IL", "1", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom, berries: true,
+            spans: true);
+        Add("ARB Crossing-2", "6", null, endKind: EndKind.ReturnToMap, setup: StartSetup.MapSpawn);
+        rooms.Berries["ARB IL"] = ["b1"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        t.Left(LeaveKind.ChapterEnd, 400, One);
+        t.Reentered(LeaveKind.ChapterEnd, "1a", "6", 0, true, false, _ => true);
+        t.ClockZeroed("1a", "6", 70, 10, true, false, _ => true);
+        t.BerryCollected("b1");
+
+        List<SegmentRecord> records = t.Left(LeaveKind.ReturnToMap, 60, One);
+        Assert.Equal(SaveAndQuitNote.Without, records.Single(r => r.Rule.Name == "ARB IL").Note);
+    }
+
+    [Fact]
+    public void AnAfterLaunchRowOpenedByItsLaunchIsWithout() {
+        Add("7a Start", "a-00", null, startKind: StartKind.AfterLaunch, setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "a-00-intro", 0, true, false, _ => true);
+        t.RoomEntered("1a", "a-00-intro", "a-00", 10, true, true, One);
+        t.LaunchEnded("1a", "a-00", 40);
+
+        Assert.Equal(SaveAndQuitNote.Without, NoteOf(t.ChapterTimeStopped(300, One)));
     }
 }

@@ -58,6 +58,20 @@ public class SegmentRulesTests {
         "1a/FC IL", "5a/FC IL", "6a/FC IL",
     ];
 
+    [Fact]
+    public void OnlyTheTwoHeartRowsOf1AHaveNoSaveAndQuitNote() {
+        Assert.Equal(["1a/ARB Crossing to Heart", "1a/ARB Start to Heart"],
+            SegmentRules.All.Where(rule => rule.NoSaveAndQuitNote).Select(rule => $"{rule.Scope}/{rule.Name}")
+                .Order().ToList());
+    }
+
+    [Fact]
+    public void TheAfterWakeUpRowsAreTheOnesWakeUpSpawnsNames() {
+        Assert.All(SegmentRules.All, rule => Assert.Equal(
+            SegmentAutoDetect.WakeUpSpawns.ContainsKey((rule.Scope, rule.Anchor)), rule.AfterWakeUp));
+        Assert.Contains(SegmentRules.All, rule => rule.AfterWakeUp);
+    }
+
     // a row given ChapterEnd by mistake would stay open across its checkpoints
     [Fact]
     public void OnlyTheIlAndCSideRowsAreAWholeChapter() {

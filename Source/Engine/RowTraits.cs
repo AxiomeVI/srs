@@ -6,12 +6,12 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// the checkpoint's map spawn, a heart that ends the row or is only required,
 /// an end on a Return to Map, an entry room of its own, a berry set that is
 /// not its checkpoint's or none at all, a dash count, a chapter row whose
-/// route returns to the map. A Full Clear label says nothing: all it
-/// requires is here.
+/// route returns to the map, a row with no Save and Quit dropdown. A Full
+/// Clear label says nothing: all it requires is here.
 internal readonly record struct RowTraits(
     bool MapSpawn = false, bool EndsOnHeart = false, Collectibles Requires = Collectibles.None,
     string EntryRoom = null, BerrySet Berries = null, bool NoBerries = false, int? Dashes = null,
-    bool EndsOnReturnToMap = false, bool SpansLeaves = false) {
+    bool EndsOnReturnToMap = false, bool SpansLeaves = false, bool NoSaveAndQuitNote = false) {
     private const Collectibles Heart = Collectibles.Heart;
     private const Collectibles Cassette = Collectibles.Cassette;
     private const Collectibles Gem = Collectibles.Gem;
@@ -35,8 +35,8 @@ internal readonly record struct RowTraits(
         [("1a", "ARB Heart to RTM")] = new(EndsOnReturnToMap: true, Berries: HeartToRtmBerries),
         [("1a", "ARB Crossing-2")] = new(MapSpawn: true, EndsOnReturnToMap: true, Berries: new BerrySet(Rooms: ["7zb"])),
         [("1a", "ARB Chasm-2")] = new(MapSpawn: true, EndsOnReturnToMap: true, Berries: ChasmTwoBerries),
-        [("1a", "ARB Start to Heart")] = new(EndsOnHeart: true, Berries: new BerrySet("Start", Rooms: ["6", "s1"])),
-        [("1a", "ARB Crossing to Heart")] = new(MapSpawn: true, EndsOnHeart: true, Berries: new BerrySet(Rooms: ["6", "s1"])),
+        [("1a", "ARB Start to Heart")] = new(EndsOnHeart: true, NoSaveAndQuitNote: true, Berries: new BerrySet("Start", Rooms: ["6", "s1"])),
+        [("1a", "ARB Crossing to Heart")] = new(MapSpawn: true, EndsOnHeart: true, NoSaveAndQuitNote: true, Berries: new BerrySet(Rooms: ["6", "s1"])),
         // 7zb, and 11 and 10zb, belong to the rows that return to the map
         [("1a", "ARB Crossing")] = new(MapSpawn: true, Requires: Heart, Berries: new BerrySet("Crossing", Except: ["7zb"])),
         [("1a", "ARB Chasm")] = new(MapSpawn: true, Berries: new BerrySet("Chasm", Except: ["11", "10zb"])),

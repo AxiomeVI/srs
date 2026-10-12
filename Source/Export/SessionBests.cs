@@ -24,6 +24,9 @@ internal static class SessionBests {
 
         foreach (RunBook.Run run in book.Offer(here)) {
             Logger.Log(LogLevel.Info, LogTag, $"session best {run.Scope}/{run.Name} {TimeFormat.FromTicks(run.Ticks)}");
+            if (run.Note != SaveAndQuitNote.Without) {
+                Logger.Log(LogLevel.Info, LogTag, $"session note {run.Scope}/{run.Name} {run.Note}");
+            }
         }
     }
 }

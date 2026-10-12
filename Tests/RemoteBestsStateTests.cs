@@ -94,7 +94,7 @@ public class RemoteBestsStateTests {
         RemoteBests.TryAcceptSaved([Row("Crossing", "22.000")], saved);
         int accepts = RemoteBests.Accepts;
 
-        RemoteBests.ApplyWritten([(Crossing, "21.948")]);
+        RemoteBests.ApplyWritten([(Crossing, "21.948", null)]);
 
         Assert.True(RemoteBests.TryGet(Crossing, out RemoteRow row));
         Assert.Equal("21.948", row.Time);
@@ -110,7 +110,7 @@ public class RemoteBestsStateTests {
         RemoteBests.Reset();
         RemoteRow original = Row("Crossing", "22.000");
         RemoteBests.AcceptFresh([original]);
-        RemoteBests.ApplyWritten([(Crossing, "21.948")]);
+        RemoteBests.ApplyWritten([(Crossing, "21.948", null)]);
         Assert.Equal("22.000", original.Time);
     }
 
@@ -120,7 +120,7 @@ public class RemoteBestsStateTests {
         RemoteBests.AcceptFresh([Row("Crossing", "22.000"), Row("Chasm", "31.000")]);
         Parallel.For(0, 200, i => {
             if (i % 2 == 0) {
-                RemoteBests.ApplyWritten([(Crossing, "21.948")]);
+                RemoteBests.ApplyWritten([(Crossing, "21.948", null)]);
             } else {
                 RemoteBests.Fail("timeout " + i);
             }
@@ -181,5 +181,43 @@ public class RemoteBestsStateTests {
         RemoteBests.Reset();
         RemoteBests.AcceptFresh([]);
         Assert.False(RemoteBests.TryGet(new SheetRowRef("A Sides", "9z", "Nowhere"), out _));
+    }
+
+    private static RemoteRow Full() => new() {
+        Tab = "A Sides", Band = "checkpoint", Chapter = "1a", Cp = "Crossing", Time = "22.000", Timing = "FileTime",
+        TimingOptions = ["S&Q", "No S&Q", "FileTime"], TimingGroup = "1a", FileTimeBuffer = 5, RankOffset = 2,
+    };
+
+    [Fact]
+    public void ATimeAloneKeepsTheTimingAndTheBuffer() {
+        RemoteBests.Reset();
+        RemoteBests.AcceptFresh([Full()]);
+        RemoteBests.ApplyWritten([(Crossing, "21.948", null)]);
+
+        Assert.True(RemoteBests.TryGet(Crossing, out RemoteRow row));
+        Assert.Equal(("21.948", "FileTime", 5.0), (row.Time, row.Timing, row.FileTimeBuffer));
+    }
+
+    [Fact]
+    public void ATimingAloneKeepsTheTimeAndClearsTheBuffer() {
+        RemoteBests.Reset();
+        RemoteBests.AcceptFresh([Full()]);
+        RemoteBests.ApplyWritten([(Crossing, null, "S&Q")]);
+
+        Assert.True(RemoteBests.TryGet(Crossing, out RemoteRow row));
+        Assert.Equal(("22.000", "S&Q"), (row.Time, row.Timing));
+        Assert.Null(row.FileTimeBuffer);
+    }
+
+    [Fact]
+    public void BothSetBothAndEveryOtherFieldIsKept() {
+        RemoteBests.Reset();
+        RemoteBests.AcceptFresh([Full()]);
+        RemoteBests.ApplyWritten([(Crossing, "21.948", "No S&Q")]);
+
+        Assert.True(RemoteBests.TryGet(Crossing, out RemoteRow row));
+        Assert.Equal(("21.948", "No S&Q", "checkpoint", "1a", 2.0), (row.Time, row.Timing, row.Band, row.TimingGroup, row.RankOffset));
+        Assert.Equal(["S&Q", "No S&Q", "FileTime"], row.TimingOptions);
+        Assert.Null(row.FileTimeBuffer);
     }
 }

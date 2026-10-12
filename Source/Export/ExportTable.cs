@@ -50,7 +50,7 @@ internal static class ExportTable {
     /// state, the others take the new answer's; a duplicate is never ticked.
     public static void KeepPressed(List<PendingUpdate> rebuilt, IReadOnlyDictionary<SheetRowRef, bool> pressed) {
         foreach (PendingUpdate update in rebuilt) {
-            if (!update.Duplicate && pressed.TryGetValue(update.Row, out bool ticked)) {
+            if (update.Writable && pressed.TryGetValue(update.Row, out bool ticked)) {
                 update.Selected = ticked;
             }
         }

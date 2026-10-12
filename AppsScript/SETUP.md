@@ -90,8 +90,10 @@ deployment and no URL: deployments are never copied.
 
 **Which tabs.** It works only on the entry tabs your sheet's **Config** tab names, in cells C6,
 C7 and C9: on the template, `A Sides`, `B+C Sides`, `Farewell` and `ARB/Full Clear`, the tabs you
-fill in. srs itself knows rows of all four. The script never writes a category tab: those read from the entry tabs, and writing into one would turn its cells manual and break
-its auto-fill. The tab list is read from those three cells on every call: a tab they stop naming
+fill in. srs itself knows rows of all four. srs writes entry tabs only: the category tabs read
+from them, and writing into one would turn its cells manual and break its auto-fill. Setting a
+Timing cell makes the sheet's own selector sync update the cells tied to it, which can sit on
+other tabs, when Config's *Sync selectors* allows it. The tab list is read from those three cells on every call: a tab they stop naming
 is no longer written, and if they name none, for example because a copy moved them, every call
 fails with an error.
 
@@ -100,9 +102,11 @@ starting from its `Time` header. Inserting rows above or inside a table is fine.
 tab, a checkpoint, or a table's `Time`, `Standard` or `Date` header is not: srs then reports the
 rows as not found and leaves them alone.
 
-**What it writes.** On a matched row, the **Time** cell, and the **Date** cell when Config's
-*Auto-fill dates* is Yes. Nothing else: the **Standard** column is a formula and is never
-touched, and a Time cell holding a formula is refused.
+**What it writes.** On a matched row, the **Time** cell, the **Date** cell when Config's
+*Auto-fill dates* is Yes, and the row's **Timing** cell where it has one and srs can vouch for
+its value (cells tied to it follow when Config's *Sync selectors* is on). Nothing else: the
+**Standard** column is a formula and is never touched, and a Time cell holding a formula is
+refused.
 
 **What it checks first.** Before writing, it compares the Time cell with what srs last read from
 your sheet, or from its saved copy of it. If you changed it in the browser meanwhile, the row

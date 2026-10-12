@@ -61,11 +61,12 @@ SRS_EXPORT_ERR_UNREADABLE=  Réponse illisible de la sheet :
 SRS_EXPORT_ERR_EMPTY=       Réponse vide de la sheet.
 SRS_EXPORT_ERR_NO_ROWS=     La sheet n'a renvoyé aucune ligne.
 SRS_EXPORT_ERR_LOGIN_PAGE=  Page web reçue au lieu de données. Vérifier le niveau d'accès du déploiement : il doit être « Anyone ».
-SRS_EXPORT_ERR_OUT_OF_DATE= Le script de la sheet n'est plus à jour. Le recopier depuis le template.
+SRS_EXPORT_ERR_OUT_OF_DATE= Le script de la sheet n'est plus à jour. Le recopier depuis le template et publier une nouvelle version du déploiement.
 
 # SESSION et DELTA sont les mots employés en français aussi ; traduits à
 # l'identique, mais passés par une clé comme le reste.
 SRS_EXPORT_COL_SHEET=       SHEET
+SRS_EXPORT_COL_ADJUSTED=    ADJUSTED
 SRS_EXPORT_COL_LOCAL=       SESSION
 SRS_EXPORT_COL_DELTA=       DELTA
 

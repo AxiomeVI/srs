@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Collections.Generic;
 using Xunit;
@@ -26,7 +27,7 @@ public class ExportProtocolTests {
     [Fact]
     public void ParsesAResponse() {
         const string json = """
-            {"results":[{"tab":"A Sides","chapter":"7a","cp":"7a Start \uD83D\uDC8E","status":"written","reason":""}],"version":2}
+            {"results":[{"tab":"A Sides","chapter":"7a","cp":"7a Start \uD83D\uDC8E","status":"written","reason":""}],"version":3}
             """;
 
         Assert.True(ExportProtocol.TryParseResponse(json, out var response, out string error));
@@ -39,7 +40,7 @@ public class ExportProtocolTests {
     [Fact]
     public void ParsesARefusalWithItsReason() {
         const string json = """
-            {"results":[{"tab":"A Sides","chapter":"1a","cp":"No Such Row","status":"notFound","reason":"no row matching 1a / No Such Row in tab \"A Sides\""}],"version":2}
+            {"results":[{"tab":"A Sides","chapter":"1a","cp":"No Such Row","status":"notFound","reason":"no row matching 1a / No Such Row in tab \"A Sides\""}],"version":3}
             """;
 
         Assert.True(ExportProtocol.TryParseResponse(json, out var response, out _));
@@ -49,14 +50,14 @@ public class ExportProtocolTests {
 
     [Fact]
     public void ANullResultsListReadsAsNoResults() {
-        Assert.True(ExportProtocol.TryParseResponse("""{"results":null,"version":2}""", out var response, out _));
+        Assert.True(ExportProtocol.TryParseResponse("""{"results":null,"version":3}""", out var response, out _));
         Assert.Empty(response.Results);
     }
 
     [Fact]
     public void NullFieldsOfAResultReadAsEmpty() {
         Assert.True(ExportProtocol.TryParseResponse(
-            """{"results":[{"tab":null,"band":null,"chapter":null,"cp":null,"status":null,"reason":null}],"version":2}""",
+            """{"results":[{"tab":null,"band":null,"chapter":null,"cp":null,"status":null,"reason":null}],"version":3}""",
             out var response, out _));
 
         ExportResult r = Assert.Single(response.Results);
@@ -66,12 +67,12 @@ public class ExportProtocolTests {
     [Fact]
     public void NullEntriesAreDroppedFromBothAnswers() {
         Assert.True(ExportProtocol.TryParseResponse(
-            """{"results":[null,{"tab":"A Sides","chapter":"1a","cp":"Crossing","status":"written"}],"version":2}""",
+            """{"results":[null,{"tab":"A Sides","chapter":"1a","cp":"Crossing","status":"written"}],"version":3}""",
             out var response, out _));
         Assert.Equal("written", Assert.Single(response.Results).Status);
 
         Assert.True(ExportProtocol.TryParseRows(
-            """{"rows":[null,{"tab":"A Sides","chapter":"1a","cp":"Crossing","time":"21.948"}],"version":2}""",
+            """{"rows":[null,{"tab":"A Sides","chapter":"1a","cp":"Crossing","time":"21.948"}],"version":3}""",
             out var rows, out _, out _, out _));
         Assert.Equal("21.948", Assert.Single(rows).Time);
     }
@@ -106,7 +107,7 @@ public class ExportProtocolTests {
     [Fact]
     public void ParsesRemoteRows() {
         const string json = """
-            {"rows":[{"tab":"A Sides","chapter":"1a","cp":"Crossing","time":"21.947","standard":"Pink"}],"version":2}
+            {"rows":[{"tab":"A Sides","chapter":"1a","cp":"Crossing","time":"21.947","standard":"Pink"}],"version":3}
             """;
 
         Assert.True(ExportProtocol.TryParseRows(json, out List<RemoteRow> rows, out _, out _, out _));
@@ -128,16 +129,16 @@ public class ExportProtocolTests {
     [Fact]
     public void ReadsTheBandOfEachRow() {
         const string json = """
-            {"rows":[{"tab":"A Sides","band":"checkpoint","chapter":"1a","cp":"Crossing","time":"21.947"}],"ms":812,"cached":false,"version":2}
+            {"rows":[{"tab":"A Sides","band":"checkpoint","chapter":"1a","cp":"Crossing","time":"21.947"}],"ms":812,"cached":false,"version":3}
             """;
 
         Assert.True(ExportProtocol.TryParseRows(json, out List<RemoteRow> rows, out _, out _, out _));
         Assert.Equal("checkpoint", Assert.Single(rows).Band);
     }
 
-    // a v1 script sends no version: srs speaks v2 only, and says what to do
+    // a v1 script sends no version: srs speaks v3 only, and says what to do
     [Fact]
-    public void RowsWithoutVersionTwoAreRefusedAsOutOfDate() {
+    public void RowsWithoutTheCurrentVersionAreRefusedAsOutOfDate() {
         const string json = """
             {"rows":[{"tab":"A Sides","chapter":"1a","cp":"Crossing","time":"21.947"}]}
             """;
@@ -148,7 +149,7 @@ public class ExportProtocolTests {
     }
 
     [Fact]
-    public void AResponseWithoutVersionTwoIsRefused() {
+    public void AResponseWithoutTheCurrentVersionIsRefused() {
         const string json = """
             {"results":[{"tab":"A Sides","chapter":"1a","cp":"Crossing","status":"written","reason":""}]}
             """;
@@ -161,7 +162,7 @@ public class ExportProtocolTests {
     // the script's own error wins over the version check: it says more
     [Fact]
     public void AnErrorAnswerIsAnErrorWhateverItsVersion() {
-        Assert.False(ExportProtocol.TryParseRows("""{"error":"boom","ms":3,"version":2}""",
+        Assert.False(ExportProtocol.TryParseRows("""{"error":"boom","ms":3,"version":3}""",
             out _, out _, out string error, out RowsFailure failure));
         Assert.Equal(RowsFailure.Refused, failure);
         Assert.Equal("boom", error);
@@ -170,7 +171,7 @@ public class ExportProtocolTests {
     [Fact]
     public void ReadsTheMatchedBandAndTheScriptTimeOfAnExport() {
         const string json = """
-            {"results":[{"tab":"A Sides","band":"il","chapter":"1a","cp":"1a","status":"unchanged","reason":"1a already holds \"2:01.3\""}],"ms":4210,"version":2}
+            {"results":[{"tab":"A Sides","band":"il","chapter":"1a","cp":"1a","status":"unchanged","reason":"1a already holds \"2:01.3\""}],"ms":4210,"version":3}
             """;
 
         Assert.True(ExportProtocol.TryParseResponse(json, out var response, out _));
@@ -200,5 +201,55 @@ public class EndpointUrlTests {
     [InlineData("not a url at all")]
     public void RefusesEverythingElse(string url) {
         Assert.False(ExportProtocol.IsEndpointUrl(url));
+    }
+
+    [Fact]
+    public void ReadsTheFiveTimingFieldsOfARow() {
+        const string json = """
+            {"rows":[{"tab":"A Sides","chapter":"1a","cp":"Crossing","time":"21.947","timing":"FileTime","timingOptions":["S&Q","No S&Q","FileTime"],"timingGroup":"1a","fileTimeBuffer":5.25,"rankOffset":2.5}],"version":3}
+            """;
+
+        Assert.True(ExportProtocol.TryParseRows(json, out List<RemoteRow> rows, out _, out _, out _));
+        RemoteRow row = Assert.Single(rows);
+        Assert.Equal("FileTime", row.Timing);
+        Assert.Equal(["S&Q", "No S&Q", "FileTime"], row.TimingOptions);
+        Assert.Equal("1a", row.TimingGroup);
+        Assert.Equal(5.25, row.FileTimeBuffer);
+        Assert.Equal(2.5, row.RankOffset);
+    }
+
+    [Fact]
+    public void AnUpdateWithoutTimingSerialisesAsBefore() {
+        string json = ExportProtocol.SerializeRequest(new ExportRequest {
+            Updates = [new ExportUpdate { Tab = "A Sides", Band = "il", Chapter = "1a", Cp = "1a", Time = "1.000", Expect = "2.000" }],
+        });
+
+        Assert.Equal("""{"updates":[{"tab":"A Sides","band":"il","chapter":"1a","cp":"1a","time":"1.000","expect":"2.000"}]}""", json);
+    }
+
+    [Fact]
+    public void AnUpdateWithTimingCarriesTheThreeFields() {
+        string json = ExportProtocol.SerializeRequest(new ExportRequest {
+            Updates = [new ExportUpdate { Timing = "S&Q", ExpectTiming = "FileTime", ExpectBuffer = 5.123 }],
+        });
+
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        System.Text.Json.JsonElement update = doc.RootElement.GetProperty("updates")[0];
+        Assert.Equal("S&Q", update.GetProperty("timing").GetString());
+        Assert.Equal("FileTime", update.GetProperty("expectTiming").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Number, update.GetProperty("expectBuffer").ValueKind);
+        Assert.Equal(5.123, update.GetProperty("expectBuffer").GetDouble());
+    }
+
+    [Fact]
+    public void AResultsTimingIsParsedAndAbsentOrNullIsEmpty() {
+        const string json = """
+            {"results":[{"tab":"A Sides","chapter":"1a","cp":"A","status":"written","timing":"set"},
+                        {"tab":"A Sides","chapter":"1a","cp":"B","status":"written"},
+                        {"tab":"A Sides","chapter":"1a","cp":"C","status":"written","timing":null}],"version":3}
+            """;
+
+        Assert.True(ExportProtocol.TryParseResponse(json, out var response, out _));
+        Assert.Equal(["set", "", ""], response.Results.Select(r => r.Timing));
     }
 }

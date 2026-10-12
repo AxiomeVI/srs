@@ -27,8 +27,12 @@ internal interface IRoomMap {
 /// What the run carries when a segment ends, for the requirement checks.
 internal readonly record struct EndState(int Dashes, IReadOnlyCollection<string> FollowingBerries);
 
+/// Whether a Save and Quit happened inside a row's run, for the sheet's
+/// dropdown. Unknown: the run cannot say, so the export leaves the cell alone.
+public enum SaveAndQuitNote { Unknown, Without, With }
+
 /// A closed segment whose requirements the run met, with its time.
-internal readonly record struct SegmentRecord(SegmentRule Rule, long Ticks);
+internal readonly record struct SegmentRecord(SegmentRule Rule, long Ticks, SaveAndQuitNote Note);
 
 /// How the level was left.
 internal enum LeaveKind {
@@ -44,8 +48,17 @@ internal enum LeaveKind {
 /// events with chapter-time readings (`Session.Time` ticks: only a difference
 /// of two is a time); each event returns what it closed.
 internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap rooms) {
-    private sealed class OpenSegment(SegmentRule rule, long start) {
+    // what opened a segment, which the note of an after-wake-up row follows
+    internal enum Opening { WalkIn, SaveAndQuit, Other }
+
+    private sealed class OpenSegment(SegmentRule rule, long start, Opening opening) {
         public readonly SegmentRule Rule = rule;
+        // the first opening stands: OpenIfClosed does not reopen
+        public readonly Opening Opening = opening;
+        // a Save and Quit re-entry carried it on: the Save and Quit was in the row
+        public bool Resumed;
+        // a split's Save and Quit stayed (SplitStayed): whether one happened is unknown
+        public bool Unsure;
         // the reading its current piece started on: a re-entry moves it
         public long Start = start;
         // chapter time of the pieces a leave has set aside
@@ -74,7 +87,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     // starts reached without control, waiting for it to come back in
     // pendingRoom. FromLoad: a savestate loaded without control, whose start
     // is tested where the player appears
-    private readonly List<(SegmentRule Rule, bool FromLoad)> pending = [];
+    private readonly List<(SegmentRule Rule, bool FromLoad, Opening Opening)> pending = [];
     private string pendingRoom;
 
     /// Swapped by RunWatcher when the area changes.
@@ -104,19 +117,34 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         pendingRoom = null;
     }
 
+    /// A split's Save and Quit stayed in the level: a Save and Quit may have
+    /// been taken without the level reloading, so no open segment can say
+    /// whether one happened in it. Starts still waiting for control were not
+    /// opened by one either.
+    public void SplitStayed() {
+        foreach (OpenSegment segment in open) {
+            segment.Unsure = true;
+        }
+
+        for (int i = 0; i < pending.Count; i++) {
+            pending[i] = pending[i] with { Opening = Opening.Other };
+        }
+    }
+
     /// A new attempt (a level from the loader, a room teleport, a first-room
     /// reset, a savestate loaded with control): nothing open is recorded.
     /// The Current Room and map-spawn segments starting in this room then open
     /// where atStart says the player is at their start; nothing else does.
     /// fromState: the savestate, the only one of the four a Heart Respawn
     /// segment opens on.
+    /// What it opens counts as opened by neither a walk-in nor a Save and Quit.
     public void Restart(string scope, string room, long reading, bool control, bool launching,
         Func<SegmentRule, bool> atStart, bool fromState = false) {
         Drop();
         OpenAt(scope, room, reading, control, launching, standalone: true,
             rule => rule.Setup != StartSetup.NextRoom && (fromState || rule.Setup != StartSetup.HeartRespawn)
                     && atStart(rule),
-            fromLoad: false);
+            fromLoad: false, Opening.Other);
     }
 
     /// A savestate loaded without control (mid-wake-up, mid-respawn, mid-intro):
@@ -126,7 +154,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     public void RestartAtAppearance(string scope, string room) {
         Drop();
         OpenAt(scope, room, 0, control: false, launching: false, standalone: true,
-            rule => rule.Setup != StartSetup.NextRoom, fromLoad: true);
+            rule => rule.Setup != StartSetup.NextRoom, fromLoad: true, Opening.Other);
     }
 
     /// The player walked into this room from another. Closes first, then opens:
@@ -158,7 +186,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             OpenAt(scope, room, reading, control, launching, standalone: false,
                 rule => rule.Setup is not (StartSetup.MapSpawn or StartSetup.HeartRespawn)
                         && Rooms.EntryRoomOf(rule) == from,
-                fromLoad: false);
+                fromLoad: false, Opening.WalkIn);
         }
 
         return records;
@@ -205,9 +233,9 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// the player appeared at its start.
     public void ControlReturned(string room, long reading, Func<SegmentRule, bool> atAppearance) {
         if (pendingRoom == room) {
-            foreach ((SegmentRule rule, bool fromLoad) in pending) {
+            foreach ((SegmentRule rule, bool fromLoad, Opening opening) in pending) {
                 if (!fromLoad || atAppearance(rule)) {
-                    OpenIfClosed(rule, reading);
+                    OpenIfClosed(rule, reading, opening);
                 }
             }
         }
@@ -220,7 +248,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     public void LaunchEnded(string scope, string room, long reading) {
         foreach (SegmentRule rule in rules) {
             if (rule.Scope == scope && rule.Start == StartKind.AfterLaunch && Rooms.StartRoomOf(rule) == room) {
-                OpenIfClosed(rule, reading);
+                OpenIfClosed(rule, reading, Opening.WalkIn);
             }
         }
     }
@@ -322,6 +350,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             }
 
             segment.Start = reading;
+            segment.Resumed |= kind == LeaveKind.SaveAndQuit;
             open.Add(segment);
         }
 
@@ -329,7 +358,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         OpenAt(scope, room, reading, control, launching, standalone: true,
             rule => rule.Setup != StartSetup.NextRoom
                     && (kind == LeaveKind.SaveAndQuit || rule.Setup != StartSetup.HeartRespawn) && atStart(rule),
-            fromLoad: false);
+            fromLoad: false, kind == LeaveKind.SaveAndQuit ? Opening.SaveAndQuit : Opening.Other);
     }
 
     /// A death zeroed chapter time (Level.Reload, in a level's first room
@@ -359,7 +388,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     }
 
     private void OpenAt(string scope, string room, long reading, bool control, bool launching, bool standalone,
-        Func<SegmentRule, bool> opens, bool fromLoad) {
+        Func<SegmentRule, bool> opens, bool fromLoad, Opening opening) {
         foreach (SegmentRule rule in rules) {
             if (rule.Scope != scope || Rooms.StartRoomOf(rule) != room || !opens(rule)) {
                 continue;
@@ -369,16 +398,16 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
                 // the launch's own end opens it (LaunchEnded); a load after the
                 // landing opens it here
                 if (standalone && control && !launching) {
-                    OpenIfClosed(rule, reading);
+                    OpenIfClosed(rule, reading, opening);
                 }
 
                 continue;
             }
 
             if (control) {
-                OpenIfClosed(rule, reading);
+                OpenIfClosed(rule, reading, opening);
             } else {
-                pending.Add((rule, fromLoad));
+                pending.Add((rule, fromLoad, opening));
                 pendingRoom = room;
             }
         }
@@ -386,14 +415,14 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
 
     // a segment already open stays open: a route looping through its start
     // room would lose the loop
-    private void OpenIfClosed(SegmentRule rule, long reading) {
+    private void OpenIfClosed(SegmentRule rule, long reading, Opening opening) {
         foreach (OpenSegment segment in open) {
             if (segment.Rule == rule) {
                 return;
             }
         }
 
-        open.Add(new OpenSegment(rule, reading));
+        open.Add(new OpenSegment(rule, reading, opening));
     }
 
     // records null: every segment that ends now may be recorded; else only
@@ -410,12 +439,38 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
 
             open.RemoveAt(i);
             if ((records == null || records(segment)) && !segment.Disqualified && Met(segment, reading, end) is { } ticks) {
-                result.Add(new SegmentRecord(segment.Rule, ticks));
+                result.Add(new SegmentRecord(segment.Rule, ticks, NoteOf(segment)));
             }
         }
 
         result.Sort((a, b) => a.Rule.Order.CompareTo(b.Rule.Order));
         return result;
+    }
+
+    // first match wins. A row that starts after a wake-up was either walked
+    // into or entered by a Save and Quit re-entry; any other way in says nothing
+    private static SaveAndQuitNote NoteOf(OpenSegment segment) {
+        if (segment.Rule.NoSaveAndQuitNote) {
+            return SaveAndQuitNote.Unknown;
+        }
+
+        if (segment.Resumed) {
+            return SaveAndQuitNote.With;
+        }
+
+        if (segment.Rule.AfterWakeUp && segment.Opening == Opening.SaveAndQuit) {
+            return SaveAndQuitNote.With;
+        }
+
+        if (segment.Unsure) {
+            return SaveAndQuitNote.Unknown;
+        }
+
+        if (segment.Rule.AfterWakeUp) {
+            return segment.Opening == Opening.WalkIn ? SaveAndQuitNote.Without : SaveAndQuitNote.Unknown;
+        }
+
+        return SaveAndQuitNote.Without;
     }
 
     // the time, or null when the run did not meet the row's requirements

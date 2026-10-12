@@ -24,6 +24,7 @@
         <Compile Include="../Source/Export/ExportProtocol.cs" Link="Source/Export/ExportProtocol.cs" />
         <Compile Include="../Source/Export/ExportBatches.cs" Link="Source/Export/ExportBatches.cs" />
         <Compile Include="../Source/Export/TimeFormat.cs" Link="Source/Export/TimeFormat.cs" />
+        <Compile Include="../Source/Export/SheetTiming.cs" Link="Source/Export/SheetTiming.cs" />
         <Compile Include="../Source/Export/PendingUpdate.cs" Link="Source/Export/PendingUpdate.cs" />
         <Compile Include="../Source/Export/RemoteBests.cs" Link="Source/Export/RemoteBests.cs" />
         <Compile Include="../Source/Export/SheetCopy.cs" Link="Source/Export/SheetCopy.cs" />
