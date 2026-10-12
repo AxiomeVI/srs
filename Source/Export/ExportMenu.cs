@@ -480,23 +480,26 @@ internal static class ExportMenu {
         $"{Dialog.Clean("SRS_EXPORT_CONFIRM")} ({updates.Count(u => u.Selected && u.Writable)})";
 
     /// The two lines under the title, recomputed every frame: what is held,
-    /// then what the read did (hidden, with no height, when empty). Both are
-    /// cut to maxWidth: a wider line widens the menu and shifts the table.
+    /// then what the read did (hidden, with no height, when empty). Both
+    /// wrap at maxWidth: a wider line widens the menu and shifts the table.
     private static void AddStatus(TextMenu newMenu, float maxWidth) {
         (string one, string two) = StatusLines();
-        TextMenu.SubHeader first = new(FitOnScreen(one, maxWidth));
-        TextMenu.SubHeader second = new(FitOnScreen(two, maxWidth), topPadding: false) { Visible = two != "" };
+        TextMenu.SubHeader first = new(Wrap(one, maxWidth));
+        TextMenu.SubHeader second = new(Wrap(two, maxWidth), topPadding: false) { Visible = two != "" };
         first.OnUpdate = () => {
             (string nowOne, string nowTwo) = StatusLines();
             if (nowOne != one) {
                 one = nowOne;
-                first.Title = FitOnScreen(nowOne, maxWidth);
+                first.Title = Wrap(nowOne, maxWidth);
+                // a title's line count is its height, which nothing else recomputes
+                newMenu.RecalculateSize();
             }
 
             if (nowTwo != two) {
                 two = nowTwo;
-                second.Title = FitOnScreen(nowTwo, maxWidth);
+                second.Title = Wrap(nowTwo, maxWidth);
                 second.Visible = nowTwo != "";
+                newMenu.RecalculateSize();
             }
         };
         newMenu.Add(first);
@@ -607,29 +610,17 @@ internal static class ExportMenu {
         Show(level, newMenu, Screen.Writing);
     }
 
-    // a SubHeader draws on one line and never wraps. The script's own
-    // reasons are long English sentences; the full text is in log.txt
+    // the widest a line of the loading and summary screens may be
     private const float SummaryMaxWidth = 1600f;
 
-    private static string FitOnScreen(string line, float maxWidth) {
-        const float scale = TextMenu.SubHeader.Scale;
-        if (ActiveFont.Measure(line).X * scale <= maxWidth) {
-            return line;
-        }
-
-        int keep = line.Length;
-        while (keep > 0 && ActiveFont.Measure(line[..keep] + "...").X * scale > maxWidth) {
-            keep--;
-        }
-
-        return line[..keep].TrimEnd() + "...";
-    }
+    private static string Wrap(string line, float maxWidth) =>
+        ExportTable.Wrap(line, maxWidth, text => ActiveFont.Measure(text).X * TextMenu.SubHeader.Scale);
 
     private static void ShowSummary(Level level, List<string> lines) {
         TextMenu newMenu = new();
         newMenu.Add(new TextMenu.Header(Dialog.Clean("SRS_EXPORT_DONE")));
         foreach (string line in lines) {
-            newMenu.Add(new TextMenu.SubHeader(FitOnScreen(line, SummaryMaxWidth), topPadding: false));
+            newMenu.Add(new TextMenu.SubHeader(Wrap(line, SummaryMaxWidth), topPadding: false));
         }
 
         // not "Cancel": the rows above are already written, and offering to

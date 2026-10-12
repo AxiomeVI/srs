@@ -93,6 +93,30 @@ internal static class ExportTable {
         _ => status,
     };
 
+    /// Breaks a line at its spaces so that no part is wider than maxWidth: a
+    /// SubHeader draws every line break but never wraps by itself, and a line
+    /// wider than the table widens the menu. A single word too wide stays whole.
+    public static string Wrap(string line, float maxWidth, Func<string, float> width) {
+        if (width(line) <= maxWidth) {
+            return line;
+        }
+
+        List<string> lines = [];
+        string current = "";
+        foreach (string word in line.Split(' ', StringSplitOptions.RemoveEmptyEntries)) {
+            string longer = current == "" ? word : current + " " + word;
+            if (current != "" && width(longer) > maxWidth) {
+                lines.Add(current);
+                current = word;
+            } else {
+                current = longer;
+            }
+        }
+
+        lines.Add(current);
+        return string.Join("\n", lines);
+    }
+
     /// One line for the rows written, one for those already on the sheet, whose
     /// reasons only go to the log, and one per other row with the script's
     /// reason, untranslated: srs does not author it.

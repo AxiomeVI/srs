@@ -111,4 +111,25 @@ public class ExportTableTests {
     public void AnEmptyAnswerStillSaysTheExportIsDone() {
         Assert.Equal(["SRS_EXPORT_DONE"], ExportTable.SummaryLines([]));
     }
+
+    // one unit per character
+    private static float Width(string text) => text.Length;
+
+    [Fact]
+    public void WrapLeavesALineThatFitsAlone() {
+        Assert.Equal("out of date", ExportTable.Wrap("out of date", 11, Width));
+    }
+
+    [Fact]
+    public void WrapBreaksAtSpacesAndNoPartIsTooWide() {
+        string wrapped = ExportTable.Wrap("copy it again from the template", 12, Width);
+
+        Assert.Equal("copy it\nagain from\nthe template", wrapped);
+        Assert.All(wrapped.Split('\n'), part => Assert.True(part.Length <= 12));
+    }
+
+    [Fact]
+    public void WrapKeepsAWordTooWideWhole() {
+        Assert.Equal("a\nverylongword\nb", ExportTable.Wrap("a verylongword b", 5, Width));
+    }
 }
