@@ -70,6 +70,8 @@ internal static class ExportTarget {
     private static void DeleteTemp() {
         try {
             File.Delete(AtomicFile.TempOf(FilePath));
+        } catch (DirectoryNotFoundException) {
+            // no folder yet, on a first launch: nothing was left there
         } catch (Exception e) {
             Logger.Log(LogLevel.Warn, LogTag,
                 $"could not delete the temporary export URL file: {e.GetType().Name}");
