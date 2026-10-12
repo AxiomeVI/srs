@@ -1244,6 +1244,35 @@ public class RunTrackerTests {
 
     // a room an ending loads can open its row after the leave: the level
     // entered next does not inherit it
+    // a Return to Map split that loaded nothing: the level goes on
+    [Fact]
+    public void AfterAReturnToMapThatLeftNothingARowWalkedIntoIsTimed() {
+        Add("Start", "1", "6", setup: StartSetup.CurrentRoom, spans: true);
+        Add("Crossing", "6", "9b", entry: "5");
+        Add("Chasm", "9b", null, entry: "9");
+        RunTracker t = Tracker();
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 100, One));
+        t.Drop();
+
+        Assert.Empty(t.RoomEntered("1a", "5", "6", 150, true, false, One));
+        Assert.Equal([("Crossing", 250L)], Of(t.RoomEntered("1a", "9", "9b", 400, true, false, One)));
+    }
+
+    [Fact]
+    public void AReturnToMapThatLeftNothingCarriesNothingToALaterReentry() {
+        SegmentRule start = Add("Start", "1", "6", setup: StartSetup.CurrentRoom, spans: true);
+        RunTracker t = Tracker();
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "1", "6", 50, true, false, One);
+        t.Left(LeaveKind.ReturnToMap, 100, One);
+        t.Drop();
+
+        t.Reentered(LeaveKind.ReturnToMap, "1a", "6", 100, true, false, _ => false);
+
+        Assert.DoesNotContain(start, t.Open);
+    }
+
     [Fact]
     public void ARowOpenedAfterALeaveDoesNotSurviveTheReentry() {
         Add("A", "1", null, setup: StartSetup.CurrentRoom);
