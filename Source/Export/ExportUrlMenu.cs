@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using Celeste.Mod.SpeedrunSheet.MenuTools;
 using Microsoft.Xna.Framework;
 using Monocle;
 using SDL2;
@@ -21,10 +22,11 @@ public static class ExportUrlMenu {
     // still out would otherwise let the older answer overwrite the newer
     private static volatile int generation;
 
-    private static readonly Color OutOfDateColor = Calc.HexToColor("FF4040");
+    internal static readonly Color ErrorColor = Calc.HexToColor("FF4040");
 
-    /// Returns the Forget button, which stays hidden while no URL is set.
-    public static TextMenu.Item CreateMenuEntries(TextMenu menu) {
+    /// Adds the URL entry, its status line and the Forget button, which stays
+    /// hidden while no URL is set.
+    internal static void CreateMenuEntries(RecursiveSubMenuBase group) {
         SrsSettings settings = SrsModule.Settings;
 
         // a check's answer belongs to the visit it was asked in: the menu is
@@ -38,44 +40,48 @@ public static class ExportUrlMenu {
         // HeightExtra 0: no top padding, as under any button
         TextMenuExt.SubHeaderExt status = new(DetailLine(settings)) {
             HeightExtra = 0f,
-            Visible = ExportTarget.IsSet,
+            Visible = !ExportTarget.IsSet,
         };
         TextMenu.Button forgetButton = new(Dialog.Clean("SRS_EXPORT_URL_FORGET")) {
             Visible = ExportTarget.IsSet,
         };
 
-        // the only place `message` and `checking` are read. ⚠️ TextMenu calls
-        // OnUpdate on every item each frame, visible or not, so this owns
-        // `status.Visible`: the master switch must be read here too, or what it
-        // sets is undone next frame
+        bool selected = false;
+        // the only place `message` and `checking` are read. OnUpdate runs on
+        // every item each frame, visible or not, so this owns the status line
         setButton.OnUpdate = () => {
-            if (!SrsModule.Settings.Enabled) {
-                return;
+            // this visit's answer first: a complaint about the clipboard must
+            // show over anything held. Then what stops an export, in red until a
+            // read is taken in: an out-of-date script, or the last read that failed
+            string trouble = null;
+            if (!checking) {
+                string unread = ExportTarget.IsSet ? Localized(RemoteBests.Error) : null;
+                trouble = message ?? Localized(SheetReader.OutOfDateError)
+                    ?? (unread == null ? null : $"{Dialog.Clean("SRS_EXPORT_NO_ANSWER")}\n{unread}");
+                // a SubHeader never wraps, and one line this long widens the whole
+                // menu: one sentence a line
+                trouble = trouble?.Replace(". ", ".\n");
             }
 
-            // an out-of-date script stops every export, auto-export without a
-            // word in game: it stays here, in red, until a read is taken in
-            string outOfDate = checking ? null : SheetReader.OutOfDateError;
-            // a read answered before Dialog had loaded left the key, not its text
-            if (outOfDate != null && Dialog.Has(outOfDate)) {
-                outOfDate = Dialog.Clean(outOfDate);
+            string title = checking ? Dialog.Clean("SRS_EXPORT_URL_CHECKING") : trouble ?? DetailLine(settings);
+            if (status.Title != title) {
+                status.Title = title;
+                // the line can go from one line to two: the group does not measure it again by itself
+                group.RecalculateSize();
             }
 
-            // a SubHeader never wraps, and one line this long widens the whole
-            // menu: its two sentences go on two lines
-            int cut = outOfDate?.IndexOf(". ", StringComparison.Ordinal) ?? -1;
-            if (cut >= 0) {
-                outOfDate = outOfDate[..(cut + 1)].Trim() + "\n" + outOfDate[(cut + 2)..].Trim();
-            }
-
-            string shown = checking ? Dialog.Clean("SRS_EXPORT_URL_CHECKING") : outOfDate ?? message;
-            status.Title = shown ?? DetailLine(settings);
-            status.TextColor = outOfDate != null ? OutOfDateColor : Color.Gray;
-            status.Visible = shown != null || ExportTarget.IsSet;
+            status.TextColor = trouble != null && trouble != Dialog.Clean("SRS_EXPORT_URL_CHECK_OK")
+                ? ErrorColor
+                : Color.Gray;
+            // a URL set and nothing to report: the line is a description, shown
+            // while the button is selected. Anything else stays up
+            ModMenu.Show(group, status, selected || checking || trouble != null || !ExportTarget.IsSet);
         };
 
         bool replaceArmed = false;
+        setButton.OnEnter = () => selected = true;
         setButton.OnLeave = () => {
+            selected = false;
             replaceArmed = false;
             setButton.Label = StatusLabel();
         };
@@ -130,14 +136,14 @@ public static class ExportUrlMenu {
             SrsModule.TrySaveSettings("the date the sheet URL was set");
 
             setButton.Label = StatusLabel();
-            forgetButton.Visible = true;
+            group.SetItemVisible(forgetButton, true);
 
             // the check is a read like any other: it warms the script's cache
             // and leaves the export screen data to open on
             BeginCheck();
         });
 
-        // press once to arm ("Forget Sheet URL?"), press again to clear:
+        // press once to arm (the label gains a "?"), press again to clear:
         // TextMenu.Button has no confirm dialog, so the two-step is one
         bool forgetArmed = false;
         forgetButton.OnLeave = () => {
@@ -169,15 +175,13 @@ public static class ExportUrlMenu {
             message = null;
             checking = false;
             forgetButton.Label = Dialog.Clean("SRS_EXPORT_URL_FORGET");
-            forgetButton.Visible = false;
+            group.SetItemVisible(forgetButton, false);
             setButton.Label = StatusLabel();
         });
 
-        menu.Add(setButton);
-        menu.Add(status);
-        menu.Add(forgetButton);
-
-        return forgetButton;
+        group.AddItem(setButton);
+        group.AddItem(status);
+        group.AddItem(forgetButton);
     }
 
     /// Reads the sheet through the one reader and says what came back. A wrong
@@ -227,14 +231,38 @@ public static class ExportUrlMenu {
         }
     }
 
-    // the label is the action, not the state: the state is the line below it,
-    // which only appears once there is one
+    // the label is the action, not the state: the state is the line below it
     private static string StatusLabel() =>
         Dialog.Clean(!ExportTarget.IsSet
             ? "SRS_EXPORT_URL_FROM_CLIPBOARD"
             : "SRS_EXPORT_URL_REPLACE_FROM_CLIPBOARD");
 
-    // never includes the URL itself: only that one is set, and when
-    private static string DetailLine(SrsSettings settings) =>
-        $"{Dialog.Clean("SRS_EXPORT_URL_DETAIL")} {settings.ExportUrlSetOn}";
+    // a read answered before Dialog had loaded left the key, not its text,
+    // alone or before a value ("KEY 500.")
+    private static string Localized(string error) {
+        if (error == null) {
+            return null;
+        }
+
+        int space = error.IndexOf(' ');
+        string key = space < 0 ? error : error[..space];
+        // srs's own keys only: Dialog.Has ignores case, and a sentence can start with a vanilla key
+        return key.StartsWith("SRS_", StringComparison.Ordinal) && Dialog.Has(key)
+            ? Dialog.Clean(key) + (space < 0 ? "" : error[space..])
+            : error;
+    }
+
+    // never includes the URL itself: only that one is set, and when. With none
+    // set, what to copy before pressing and where the way to get it is written
+    private static string DetailLine(SrsSettings settings) {
+        if (!ExportTarget.IsSet) {
+            return $"{Dialog.Clean("SRS_EXPORT_URL_HINT")}\n{Dialog.Clean("SRS_EXPORT_URL_HINT_GUIDE")}";
+        }
+
+        // no date for a URL file dropped by hand
+        string set = Dialog.Clean("SRS_EXPORT_URL_DETAIL");
+        return string.IsNullOrEmpty(settings.ExportUrlSetOn)
+            ? set.TrimEnd(':', ' ')
+            : $"{set} {settings.ExportUrlSetOn}";
+    }
 }

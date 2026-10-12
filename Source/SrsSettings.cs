@@ -2,7 +2,7 @@ namespace Celeste.Mod.SpeedrunSheet;
 
 public class SrsSettings : EverestModuleSettings {
     // master switch: off, the mod is inert and Mod Options shows only this
-    // toggle. Built by hand in ModMenu, whose Change handler hides the rest
+    // toggle. Built by hand in ModMenu, whose Change handler folds the rest
     [SettingIgnore]
     public bool Enabled { get; set; } = true;
 
@@ -49,13 +49,9 @@ public class SrsSettings : EverestModuleSettings {
         }
     }
 
-    // the tier's name in the rows drawn above the room timer; a menu toggle
-    // and a rebindable hotkey, which TierComparison reads
+    // the tier's name in the rows drawn above the room timer
     [SettingIgnore]
     public bool ShowTier { get; set; } = true;
-
-    [SettingIgnore]
-    public ButtonBinding ToggleShowTier { get; set; } = new();
 
     // the rows' other parts ("1a Crossing", "14.875", "PB -0.214",
     // "+0.140 to Purple 1"); menu toggles only

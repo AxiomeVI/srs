@@ -72,8 +72,8 @@ public class SrsModule : EverestModule {
 
     /// Takes Speed Run Tool's formatter rather than copying it. By reflection,
     /// the only way in: RoomTimerData.FormatTime is public, its class is not,
-    /// the ModInterop does not export it, and srs uses no Publicizer. isPbTime
-    /// false: true returns "" for a zero, Speed Run Tool's absent PB.
+    /// the ModInterop does not export it, and srs's own code reads public members
+    /// only. isPbTime false: true returns "" for a zero, Speed Run Tool's absent PB.
     private static void AdoptSpeedrunToolsTimeFormat() {
         try {
             Assembly assembly = Everest.Modules

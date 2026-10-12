@@ -5,6 +5,8 @@ using System.Linq;
 using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Celeste.Mod.SpeedrunSheet.MenuTools;
+using Microsoft.Xna.Framework;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
@@ -23,6 +25,9 @@ public static class SheetImporter {
     // button: pressing the button during the startup one joins it instead of
     // downloading the same tabs twice
     private static Task<bool> running;
+
+    // the last update did not go through: the menu says so until one does
+    private static volatile bool updateFailed;
     private static readonly object RunningGate = new();
 
     // the caches double as the manual import: hand-exported CSVs of the tabs
@@ -71,26 +76,46 @@ public static class SheetImporter {
     public static void Unload() {
         Data = null;
         CacheTime = null;
+        updateFailed = false;
     }
 
     /// Returns what pressing Update Standards does, for the master switch to
     /// run when the mod comes back on: the same refresh, shown the same way.
-    public static Action CreateMenuEntries(TextMenu menu) {
-        TextMenu.SubHeader status = new(StatusText(), topPadding: false);
+    internal static Action CreateMenuEntries(RecursiveSubMenuBase group) {
         TextMenu.Button update = new(Dialog.Clean("SRS_UPDATE_STANDARDS"));
+        // HeightExtra 0: no top padding, as under any button
+        TextMenuExt.SubHeaderExt status = new(StatusText()) {
+            HeightExtra = 0f,
+            TextColor = updateFailed ? ExportUrlMenu.ErrorColor : Color.Gray,
+            Visible = NeedsSaying,
+        };
+        // when all is well the line is a description: shown while the button is selected
+        bool selected = false;
+        update.OnEnter = () => selected = true;
+        update.OnLeave = () => selected = false;
+        // read each frame on the game thread: a refresh started at load or by the
+        // master switch shows here too
+        update.OnUpdate = () => {
+            ModMenu.Show(group, status, selected || NeedsSaying);
+            string text = StatusText();
+            if (status.Title != text) {
+                status.Title = text;
+                group.RecalculateSize();
+            }
+
+            status.TextColor = updateFailed ? ExportUrlMenu.ErrorColor : Color.Gray;
+        };
+
         void Refresh() {
             update.Label = Dialog.Clean("SRS_UPDATING");
-            // menu items just read these strings each frame, so mutating them
+            // a menu item just reads this string each frame, so mutating it
             // from the worker thread is safe
-            BeginUpdate(ok => {
-                update.Label = Dialog.Clean(ok ? "SRS_UPDATE_OK" : "SRS_UPDATE_FAIL");
-                status.Title = StatusText();
-            });
+            BeginUpdate(ok => update.Label = Dialog.Clean(ok ? "SRS_UPDATE_OK" : "SRS_UPDATE_FAIL"));
         }
 
         update.Pressed(Refresh);
-        menu.Add(update);
-        menu.Add(status);
+        group.AddItem(update);
+        group.AddItem(status);
         return Refresh;
     }
 
@@ -100,7 +125,11 @@ public static class SheetImporter {
         Task<bool> task;
         lock (RunningGate) {
             if (running == null || running.IsCompleted) {
-                running = Task.Run(UpdateFromSheet);
+                running = Task.Run(async () => {
+                    bool ok = await UpdateFromSheet();
+                    updateFailed = !ok;
+                    return ok;
+                });
             }
 
             task = running;
@@ -112,13 +141,20 @@ public static class SheetImporter {
         }
     }
 
+    // a failed update, or no standards at all: the line stays up without being asked
+    private static bool NeedsSaying => updateFailed || Data == null;
+
     private static string StatusText() {
-        if (Data == null) {
-            return Dialog.Clean("SRS_STATUS_NONE");
+        // what is in use is what the last update that worked brought, and when
+        string date = Data == null ? null : CacheTime?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "?";
+        if (updateFailed) {
+            return date == null
+                ? $"{Dialog.Clean("SRS_STATUS_UPDATE_FAILED")}\n{Dialog.Clean("SRS_STATUS_NONE")}"
+                // two lines: a SubHeader never wraps, and one this long widens the whole menu
+                : $"{Dialog.Clean("SRS_STATUS_UPDATE_FAILED")}\n{Dialog.Clean("SRS_STATUS_STILL_USING")} {date}";
         }
 
-        string date = CacheTime?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "?";
-        return $"{Dialog.Clean("SRS_STATUS_LOADED")}: {Data.SegmentCount} ({date})";
+        return date == null ? Dialog.Clean("SRS_STATUS_NONE") : $"{Dialog.Clean("SRS_STATUS_LOADED")} {date}";
     }
 
     private static async Task<bool> UpdateFromSheet() {

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Celeste.Mod.SpeedrunTool;
-using Celeste.Mod.SpeedrunTool.Message;
 using Celeste.Mod.SpeedrunTool.RoomTimer;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -63,15 +62,6 @@ public static class TierComparison {
 
         if (!Settings.Enabled) {
             return;
-        }
-
-        // flip the toggle and confirm with Speed Run Tool's popup; Hotkeys
-        // answers false while paused
-        if (Hotkeys.Pressed(Hotkeys.ToggleShowTier)) {
-            Settings.ShowTier = !Settings.ShowTier;
-            SrsModule.TrySaveSettings("Show Tier");
-            PopupMessageUtils.ShowOptionState(Dialog.Clean("MODOPTIONS_SRS_SHOWTIER"),
-                Dialog.Clean(Settings.ShowTier ? DialogIds.On : DialogIds.Off));
         }
 
         // a new record shows itself; the hotkey steps back from it and wraps,
