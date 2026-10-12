@@ -16,7 +16,8 @@ internal interface IRoomMap {
     string EndRoomOf(SegmentRule rule);
 
     /// The room the rule's start room must be entered from; null when the rule
-    /// never opens on an entry (a chapter's Start, 7A's start, a map-spawn row).
+    /// never opens on an entry (a chapter's Start, 7A's start, a map-spawn or
+    /// heart-respawn row).
     string EntryRoomOf(SegmentRule rule);
 
     /// The berries the rule requires, as EntityID keys. Null or empty
@@ -288,9 +289,10 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
 
     /// The level was left, on this reading. A Save and Quit sets every open
     /// segment aside, for Reentered. Any other leave sets aside the segments
-    /// that span leaves, unless they end on it with all they require, and
-    /// drops a piece from the map that fetched nothing its row lacked (a try,
-    /// at a Return to Map or at the end of a row already completed). It then
+    /// that span leaves, unless they end on it with all they require. A piece
+    /// from the map that fetched nothing its row lacked (a try, at a Return to
+    /// Map or at the end of a row already completed) is not set aside: the
+    /// whole row goes, bank included. It then
     /// closes what ends there and drops the rest, unrecorded.
     public List<SegmentRecord> Left(LeaveKind kind, long reading, EndState end) {
         pending.Clear();
@@ -499,13 +501,13 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         return elapsed + rule.HeadTicks + rule.TailTicks;
     }
 
-    // how many of the things the rule requires the segment does not hold: a
-    // berry not banked (one still following is not), a heart or a cassette,
-    // each gem short
     // how many things the rule requires in all: what Lacks counts down from
     private int Needs(SegmentRule rule) =>
         BitOperations.PopCount((uint)rule.Requires) + rule.Gems + (Rooms.BerriesOf(rule)?.Count ?? 0);
 
+    // how many of the things the rule requires the segment does not hold: a
+    // berry not banked (one still following is not), a heart or a cassette,
+    // each gem short
     private int Lacks(OpenSegment segment) {
         SegmentRule rule = segment.Rule;
         int lacks = BitOperations.PopCount((uint)(rule.Requires & ~segment.Collected))

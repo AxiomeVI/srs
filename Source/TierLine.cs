@@ -13,9 +13,9 @@ internal static class TierLine {
     /// The time is ranked as Speed Run Tool shows it, to the millisecond, which
     /// is also the time the export writes and the sheet ranks. The tier and
     /// the gap are taken on that time plus `rankOffsetTicks`; the time and the PB
-    /// are not. Null: time alone, no tier, no gap.
+    /// are not. A null `rankOffsetTicks` gives the time alone, no tier, no gap.
     public static TierRows Build(List<string> columns, List<TimeSpan?> thresholds, long ticks, long? sheetTicks,
-        long? rankOffsetTicks = 0) {
+        long? rankOffsetTicks) {
         string shownText = TimeFormat.FromTicks(ticks);
         TimeSpan shown = SheetData.TryParseTime(shownText) ?? TimeSpan.FromTicks(ticks);
 

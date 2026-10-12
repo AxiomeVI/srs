@@ -89,7 +89,7 @@ public static class TierComparison {
     }
 
     // the shown record's row, looked up by name (see SheetBlock.Find), while
-    // the player is still in the room the latest closed in
+    // the player is still in RunWatcher.LatestRoom
     private static void ComputeTier(Session session) {
         rows = null;
         if (session.Level != RunWatcher.LatestRoom) {

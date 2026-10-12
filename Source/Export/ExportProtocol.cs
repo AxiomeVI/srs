@@ -82,12 +82,12 @@ internal sealed class RowsResponse {
     [JsonPropertyName("version")] public int? Version { get; set; }
 }
 
-/// Wire format between the mod and the player's Apps Script Web App.
-/// Never throws: every failure path returns false with a human-readable message.
 /// Why an answer holds no rows: it is not the script's, the script refused
 /// with a reason of its own, or it speaks another protocol version.
 public enum RowsFailure { None, NotTheScript, Refused, OutOfDate }
 
+/// Wire format between the mod and the player's Apps Script Web App.
+/// Never throws: every failure path returns false with a human-readable message.
 public static class ExportProtocol {
     /// The only version of the script srs speaks. Absent means a version 1
     /// script, which the player replaces by copying the script again.
@@ -157,7 +157,6 @@ public static class ExportProtocol {
             r.Cp ??= "";
             r.Status ??= "";
             r.Reason ??= "";
-            r.Timing ??= "";
         }
         error = null;
         return true;

@@ -30,8 +30,8 @@ public sealed class PendingUpdate {
     /// the sync group of the Timing cell, null when tied to nothing
     public string Group { get; private init; }
     /// the sheet's time converted to the basis srs measures (a FileTime cell), or
-    /// the time shifted into the basis the standard is graded in (1A chapter
-    /// rows); empty otherwise
+    /// the session time shifted into the basis the standard is graded in (1A
+    /// chapter rows); empty otherwise
     public string AdjustedText { get; private init; } = "";
     /// the cell holds a time entered as FileTime
     public bool SheetIsFileTime { get; private init; }

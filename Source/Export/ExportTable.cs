@@ -47,7 +47,8 @@ internal static class ExportTable {
     }
 
     /// A table rebuilt on a newer answer: rows the player pressed keep their
-    /// state, the others take the new answer's; a duplicate is never ticked.
+    /// state, the others take the new answer's; a row not Writable is never
+    /// ticked.
     public static void KeepPressed(List<PendingUpdate> rebuilt, IReadOnlyDictionary<SheetRowRef, bool> pressed) {
         foreach (PendingUpdate update in rebuilt) {
             if (update.Writable && pressed.TryGetValue(update.Row, out bool ticked)) {

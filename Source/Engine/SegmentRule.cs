@@ -14,7 +14,8 @@ internal enum Collectibles {
 }
 
 internal enum StartKind {
-    // entering the start room, or a restart in it (RunTracker.Restart)
+    // entering the start room, or a restart or a re-entry opening in it
+    // (RunTracker.Restart, Reentered)
     Room,
     // once the launch (the intro jump) into the start room is over
     // (SegmentAutoDetect.AfterLaunchStarts)
@@ -39,7 +40,8 @@ internal enum EndKind {
     // entering the next start's room; with no next start, chapter time stopping
     // (the room map says which)
     NextStart,
-    // chapter time stopping, whatever checkpoints come between: a whole chapter
+    // chapter time stopping, whatever checkpoints come between: a whole
+    // chapter. A row that spans leaves also ends on a Return to Map
     ChapterEnd,
     // the collect itself; with two collectibles, the later of the two
     Collect,

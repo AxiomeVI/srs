@@ -237,7 +237,7 @@ public class EndpointUrlTests {
     }
 
     [Fact]
-    public void AnUpdateWithoutTimingSerialisesAsBefore() {
+    public void AnUpdateWithoutTimingOmitsTheTimingFields() {
         string json = ExportProtocol.SerializeRequest(new ExportRequest {
             Updates = [new ExportUpdate { Tab = "A Sides", Band = "il", Chapter = "1a", Cp = "1a", Time = "1.000", Expect = "2.000" }],
         });
@@ -260,14 +260,13 @@ public class EndpointUrlTests {
     }
 
     [Fact]
-    public void AResultsTimingIsParsedAndAbsentOrNullIsEmpty() {
+    public void AResultsTimingIsParsedAndAbsentIsEmpty() {
         const string json = """
             {"results":[{"tab":"A Sides","chapter":"1a","cp":"A","status":"written","timing":"set"},
-                        {"tab":"A Sides","chapter":"1a","cp":"B","status":"written"},
-                        {"tab":"A Sides","chapter":"1a","cp":"C","status":"written","timing":null}],"version":3}
+                        {"tab":"A Sides","chapter":"1a","cp":"B","status":"written"}],"version":3}
             """;
 
         Assert.True(ExportProtocol.TryParseResponse(json, out var response, out _));
-        Assert.Equal(["set", "", ""], response.Results.Select(r => r.Timing));
+        Assert.Equal(["set", ""], response.Results.Select(r => r.Timing));
     }
 }

@@ -114,8 +114,9 @@ public static class RemoteBests {
                     return row;
                 }
 
-                // the buffer goes with a Timing write: the selector sync may
-                // have moved it, and the read after every export brings the new one
+                // a Timing write makes the cell readable, so its buffer no
+                // longer applies. Rows the sync moved keep what was read: the
+                // read after every export brings the new values
                 return new RemoteRow {
                     Tab = row.Tab, Band = row.Band, Chapter = row.Chapter, Cp = row.Cp,
                     Time = change.Time ?? row.Time,

@@ -6,10 +6,12 @@ using System.Threading.Tasks;
 namespace Celeste.Mod.SpeedrunSheet;
 
 /// One export as several requests. The script takes about half a second per
-/// row it writes (224 rows: 100 to 145 s, measured), and a read made during a
-/// request never shows what it wrote: no request may near the client's timeout.
+/// row that sets no Timing value (224 rows: 100 to 145 s, measured), about 3 s
+/// for a row that sets a synced selector, and a read made during a request
+/// never shows what it wrote: no request may near the client's timeout.
 internal static class ExportBatches {
-    // about 12 s in the script when every row is written
+    // about 12 s in the script when every row is written and sets no Timing,
+    // about 75 s when every one sets a synced selector
     public const int Size = 25;
 
     /// Sends the updates in order, each request after the previous answer: the
