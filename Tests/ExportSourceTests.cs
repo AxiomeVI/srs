@@ -27,6 +27,37 @@ public class ExportSourceTests {
         Assert.All(updates, u => Assert.True(u.Selected));
     }
 
+    private static RemoteRow Cell(string chapter, string cp, string time) =>
+        new() { Tab = "A Sides", Band = "checkpoint", Chapter = chapter, Cp = cp, Time = time };
+
+    // what beats the sheet first, each part in the order the screen had
+    [Fact]
+    public void ListsTheRowsThatBeatTheSheetFirst() {
+        RemoteBests.Reset();
+        RemoteBests.AcceptFresh([
+            Cell("1a", "1a Start", "10.000"), Cell("1a", "Crossing", "50.000"),
+            Cell("1a", "Chasm", "10.000"), Cell("2a", "Awake", "50.000"),
+        ]);
+
+        List<PendingUpdate> updates = ExportSource.Collect([
+            Run("2a", "Awake", 40), Run("1a", "Chasm", 30), Run("1a", "Crossing", 25), Run("1a", "Start", 20),
+        ]);
+
+        Assert.Equal(["Crossing", "Awake", "Start", "Chasm"], updates.Select(u => u.Label));
+        Assert.Equal([true, true, false, false], updates.Select(u => u.Improves));
+    }
+
+    // a tick moves nothing: the order is the sheet's verdict, not the player's
+    [Fact]
+    public void ImprovesDoesNotFollowTheTick() {
+        RemoteBests.Reset();
+        PendingUpdate update = Assert.Single(ExportSource.Collect([Run("1a", "Crossing", 20)]));
+
+        update.Selected = false;
+
+        Assert.True(update.Improves);
+    }
+
     [Fact]
     public void ListsTheSideBeingPlayedFirst() {
         RemoteBests.Reset();

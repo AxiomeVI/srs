@@ -13,6 +13,9 @@ public sealed class PendingUpdate {
     public string RemoteCell { get; private init; }
     public string DeltaText { get; private init; }
     public bool Selected { get; set; }
+    /// a writable time that beats the sheet: what Selected starts as, and what
+    /// lists the row above those that do not. The player's ticks do not move it
+    public bool Improves { get; private init; }
     /// the band the cell was read from, sent back so the script searches it alone
     public string Band { get; private init; }
     /// a key the sheet holds twice: listed, never written
@@ -108,6 +111,7 @@ public sealed class PendingUpdate {
             DeltaText = delta,
             Ahead = unreadable || remoteTicks == null || shown == remoteTicks.Value ? null : shown < remoteTicks.Value,
             Selected = improves && writable,
+            Improves = improves && writable,
             Timing = timing,
             ExpectTiming = timing == null ? null : remote.Timing,
             ExpectBuffer = fileTime && cellTicks != null ? remote.FileTimeBuffer : null,
