@@ -5,7 +5,7 @@ Mod Everest **Speedrun Sheet** (`srs`), dépendant de SpeedrunTool : importe les
 
 ## Build
 
-- .NET 8, projet unique `srs.csproj`. Sur cette machine : `~/.dotnet/dotnet build -p:CelestePrefix="$HOME/.steam/steam/steamapps/common/Celeste"`.
+- .NET 8, projet unique `srs.csproj`. Ici : `~/.dotnet/dotnet build -p:CelestePrefix="$HOME/.steam/steam/steamapps/common/Celeste"`.
 - `SpeedrunTool.dll` extraite du `SpeedrunTool.zip` installé (cible `ExtractSpeedrunToolDll`), version épinglée dans `everest.yaml` ; sans zip, une `SpeedrunTool.dll` déjà extraite dans `$(CelestePrefix)` sert de référence. Pas de Publicizer : tout passe par le ModInterop et les classes publiques.
 - Cible `OutputAsModStructure` : génère `build/` (`bin/` DLL+PDB, `everest.yaml`, `Dialog/`) → **à zipper** dans `<Celeste>/Mods/`, et copie la DLL dans `bin/` à la racine du repo. **Le sous-dossier `bin/` est celui qu'`everest.yaml` désigne** (`DLL: bin/srs.dll`) : le déplacer sans toucher au yaml fait échouer le chargement du module, sans rien dire.
 - `<Compile Remove="Tests/**" />` dans le csproj : **ne pas retirer** (le SDK globbe `**/*.cs`, sans ça les sources de test partiraient dans `srs.dll`).
@@ -42,13 +42,14 @@ Le code porte ses justifications en commentaires ; ici, seules celles qui dépas
   - **Quitter le niveau nourrit `Left`** (`Level.OnExit` dans `orig` ; `Completed` qui monte ; SomeSplitButtons, interop ≥ 3, non déclaré : `Loading` d'un Save and Quit, `Split` d'un Return to Map, `NoLoadYet` jusqu'à son `Loading`). Le loader suivant n'est une reprise (`Reentered`) qu'après un Save and Quit, même room et même `Session.Time`, ou sur le spawn carte d'un checkpoint du même chapitre, où la ligne de tier reste. Load, mod éteint, téléport l'oublient.
   - **Fraises** : `Strawberry.OnCollect` nourrit le tracker (moon berry comprise), celles qui suivent passent dans `EndState` ; `RoomMap` lit la carte, **non résolu = jamais enregistrée**.
   - **Sans le SaveLoad de SpeedrunTool, srs n'enregistre rien**.
-- `Source/Export/` — **export des temps de session vers la copie personnelle de la sheet**, protocole v3. **Un export part par requêtes de 25 lignes** (`ExportBatches`), chacune après la réponse de la précédente : le script verrouille.
+- `Source/Export/` — **export des temps de session vers la sheet du joueur**, protocole v3. **Un export part par requêtes de 25 lignes** (`ExportBatches`), une réponse à la fois : le script verrouille.
   - `SessionBests` garde le meilleur **de chaque ligne** (`RunBook`) et sa `SaveAndQuitNote`, par nom, pas par checkpoint jeu (sinon `Hollows Tape RTM` passerait pour `Hollows`), **toute la session, tous chapitres** ; l'écran : côté joué, puis ordre de `SheetRows.All`, ARB sous leur côté.
   - **L'écriture est un compare-and-swap** : chaque ligne porte la cellule *brute* lue (`PendingUpdate.RemoteCell`, jamais reformatée : la sheet écrit `1:36.9` là où `TimeFormat` rend `1:36.900`), le script la refuse si elle a bougé. `SheetTiming` (game-free) : valeur `Timing`, conversion `FileTime` (buffer de la sheet), liste envoyée ; **jamais de temps dans une cellule `FileTime` sans sa bascule**.
   - **`SheetReader` seul lit la sheet** et seul écrit ce que srs en garde (`RemoteBests`, copie `Saves/srs/sheet-times.json` : empreinte de l'URL, pas l'URL). Un fetch à la fois, rejoint s'il vise l'URL courante depuis la dernière écriture. **Le compteur d'écritures monte avant et après un POST** : le script sert les anciennes cellules jusqu'au bout. Décisions, publication, copie, `Forget` : **un verrou**, jamais le réseau.
-  - `TextMenu` : thread de jeu seul ; mod éteint : file vidée, écran fermé. `ExportMenu` reçoit le POST par une file vidée en `Level.Update` ; `ExportUrlMenu` (aussi au titre) par des `volatile` lus en `OnUpdate`.
+  - **`ExportSend` seul émet**, par `TryBeginWrite`. **Thread de jeu : d'`AutoExport`, `Offer` et `TakeFailed` seuls, ni verrou ni log.**
+  - `TextMenu` : thread de jeu seul ; mod éteint : file vidée, écran fermé. Le POST revient à `ExportMenu` par une file vidée en `Level.Update`, à `ExportUrlMenu` (titre aussi) par des `volatile`.
   - `ExportTarget` écrit l'URL par `AtomicFile` (ne lève jamais, efface le `.tmp` : l'URL).
-- `AppsScript/SETUP.md` — le déploiement du Web App par le joueur. **Le script n'est pas dans ce dépôt** (le template de la sheet le porte, `srsExport.gs`) ; il apparie les lignes **par libellé normalisé**, et aucun test d'ici ne le fait tourner.
+- `AppsScript/SETUP.md` — le déploiement du Web App. **Le script n'est pas dans ce dépôt** (le template de la sheet le porte, `srsExport.gs`) ; il apparie les lignes **par libellé normalisé** ; aucun test ici.
 - `TierComparison.cs` — **au-dessus** du timer. 1A (standard en file time) : palier par le `rankOffset` de la sheet. PB et offset lus dans `RemoteBests` **une fois** par record, pour qu'un export ne les ôte pas.
 - `Dialog/English.txt` + `French.txt` — pas de placeholders `{0}` (`Dialog.Clean` efface les accolades) : composer en code. **Exceptions** : `SRS_KEYBIND_TIMEOUT` et `…PAGE_COMBO_HINT`, lus bruts (`Dialog.Get`).
 
@@ -75,7 +76,7 @@ Le code porte ses justifications en commentaires ; ici, seules celles qui dépas
 
 1. `Source/<Feature>.cs` statique avec `Load()`/`Unload()`, appelés depuis `SrsModule` (attention à l'ordre des hooks).
 2. Option de menu → settings + clés dialog EN **et** FR ; entrées dans `ModMenu`. Sauvegarde par `SrsModule.TrySaveSettings`, fichier écrit sur le thread de jeu par `AtomicFile`.
-3. Réseau → jamais sur le thread de jeu, timeout, erreurs loggées jamais levées. **`ExportTarget.Url` n'entre dans aucun log, aucun message, aucun champ pré-rempli : l'URL *est* le credential du Web App.** Elle vit dans `Saves/srs/export-url.txt`, **jamais dans le fichier de settings**, que les joueurs partagent pour demander de l'aide. Une tâche de fond ne construit ni ne détruit d'item de `TextMenu` ; muter le `Label` d'un item existant est sûr.
+3. Réseau → jamais sur le thread de jeu, timeout, erreurs loggées jamais levées. **`ExportTarget.Url` n'entre dans aucun log, aucun message, aucun champ pré-rempli : l'URL *est* le credential du Web App.** Elle vit dans `Saves/srs/export-url.txt`, **jamais dans le fichier de settings**, que les joueurs partagent. Une tâche de fond ne construit ni ne détruit d'item de `TextMenu` ; muter le `Label` d'un item existant est sûr.
 4. État statique décrivant l'état de jeu et muté en gameplay → interop `SpeedrunTool.SaveLoad`. Ce qui décrit la session s'en exclut.
 5. Logique game-free → test dans `Tests/` ; une table hardcodée touchée ⇒ `SheetConsistencyTests` et `SegmentRulesTests` doivent passer. Ne pas écrire de nombre ici.
 6. Build, zipper `build/` dans `<Celeste>/Mods/`, tester en jeu.

@@ -71,6 +71,10 @@ public class SrsSettings : EverestModuleSettings {
     [SettingIgnore]
     public bool ShowDelta { get; set; } = true;
 
+    // sends a session best that beats the sheet as soon as its row ends; off by default
+    [SettingIgnore]
+    public bool AutoExport { get; set; }
+
     // local date the URL was last set, "yyyy-MM-dd". Display only: it lets the
     // status line say "set <date>" without showing the URL
     [SettingIgnore]

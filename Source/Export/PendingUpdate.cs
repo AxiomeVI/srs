@@ -36,6 +36,10 @@ public sealed class PendingUpdate {
     /// the cell holds a time entered as FileTime
     public bool SheetIsFileTime { get; private init; }
 
+    /// the sheet held the row when this was built. A row it lacks is ticked for
+    /// the screen, where the player sees the refusal; nothing sends it unasked
+    public bool OnSheet { get; private init; }
+
     /// a duplicate, or a FileTime cell srs has no value to switch: listed, never
     /// ticked, never sent
     public bool Writable => !Duplicate && !(SheetIsFileTime && Timing == null);
@@ -50,7 +54,7 @@ public sealed class PendingUpdate {
         string band = remote?.Band ?? "";
         if (duplicate) {
             return new PendingUpdate {
-                Row = row, Label = label, Band = band, Duplicate = true,
+                Row = row, Label = label, Band = band, Duplicate = true, OnSheet = remote != null,
                 LocalTicks = localTicks, LocalText = localText,
                 RemoteText = "", RemoteCell = "", DeltaText = ExportProtocol.Localize("SRS_EXPORT_DUPLICATE"),
             };
@@ -110,6 +114,7 @@ public sealed class PendingUpdate {
             Group = remote?.TimingGroup,
             AdjustedText = adjusted,
             SheetIsFileTime = fileTime,
+            OnSheet = remote != null,
         };
     }
 }

@@ -54,6 +54,20 @@ internal static class ModMenu {
             menu.Add(openExport);
         }
 
+        // also from the title screen; shown once a URL is set, like the button above
+        TextMenu.OnOff autoExport = new(Dialog.Clean("MODOPTIONS_SRS_AUTOEXPORT"), settings.AutoExport);
+        autoExport.Change(on => {
+            settings.AutoExport = on;
+            if (!on) {
+                AutoExport.Drop();
+            }
+
+            // at once: left on in the file after being switched off, it would write to the sheet
+            SrsModule.TrySaveSettings("auto-export");
+        });
+        autoExport.OnUpdate = () => autoExport.Visible = settings.Enabled && ExportTarget.IsSet;
+        menu.Add(autoExport);
+
         // never in a submenu, which keeps reading input under the screen it opens
         menu.Add(HotkeyMenu.OpenButton(menu, Hotkeys.Set, Hotkeys.Text, () => SrsModule.TrySaveSettings("the hotkeys")));
 

@@ -21,13 +21,13 @@ public class ExportBatchesTests {
     public async Task EveryRowIsSentOnceInOrderAndNoRequestIsOverTheSize() {
         List<int> sizes = [];
         List<int> progress = [];
-        (List<ExportResult> results, int? ms, string error) = await ExportBatches.Send(
+        (List<ExportResult> results, int? ms, string error, _) = await ExportBatches.Send(
             Updates(2 * ExportBatches.Size + 3),
             json => {
                 sizes.Add(JsonSerializer.Deserialize<ExportRequest>(json).Updates.Count);
                 return Task.FromResult((Answer(json), (string) null));
             },
-            () => true, progress.Add);
+            () => true, progress.Add, _ => { });
 
         Assert.Null(error);
         Assert.Equal([ExportBatches.Size, ExportBatches.Size, 3], sizes);
@@ -40,14 +40,14 @@ public class ExportBatchesTests {
     public async Task ARequestIsSentOnlyAfterThePreviousAnswer() {
         List<TaskCompletionSource<(string, string)>> pending = [];
         List<string> bodies = [];
-        Task<(List<ExportResult> Results, int? Ms, string Error)> send = ExportBatches.Send(
+        Task<(List<ExportResult> Results, int? Ms, string Error, bool Stopped)> send = ExportBatches.Send(
             Updates(ExportBatches.Size + 1),
             json => {
                 bodies.Add(json);
                 pending.Add(new TaskCompletionSource<(string, string)>());
                 return pending[^1].Task;
             },
-            () => true, _ => { });
+            () => true, _ => { }, _ => { });
 
         Assert.Single(pending);
         pending[0].SetResult((Answer(bodies[0]), null));
@@ -63,7 +63,7 @@ public class ExportBatchesTests {
     [InlineData("short")]
     public async Task AFailedRequestStopsTheExportAndKeepsWhatWasAnswered(string failure) {
         int requests = 0;
-        (List<ExportResult> results, _, string error) = await ExportBatches.Send(
+        (List<ExportResult> results, _, string error, _) = await ExportBatches.Send(
             Updates(3 * ExportBatches.Size),
             json => {
                 requests++;
@@ -77,7 +77,7 @@ public class ExportBatchesTests {
                     _ => (Answer(json, drop: 1), (string) null),
                 });
             },
-            () => true, _ => { });
+            () => true, _ => { }, _ => { });
 
         Assert.NotNull(error);
         Assert.Equal(2, requests);
@@ -87,16 +87,47 @@ public class ExportBatchesTests {
     [Fact]
     public async Task NothingMoreIsSentOnceTheTargetIsGone() {
         int requests = 0;
-        (List<ExportResult> results, _, string error) = await ExportBatches.Send(
+        (List<ExportResult> results, _, string error, _) = await ExportBatches.Send(
             Updates(3 * ExportBatches.Size),
             json => {
                 requests++;
                 return Task.FromResult((Answer(json), (string) null));
             },
-            () => requests < 1, _ => { });
+            () => requests < 1, _ => { }, _ => { });
 
         Assert.NotNull(error);
         Assert.Equal(1, requests);
         Assert.Equal(ExportBatches.Size, results.Count);
+    }
+
+    [Fact]
+    public async Task TellsEachBatchBeforeItIsPosted() {
+        List<string> events = [];
+        await ExportBatches.Send(
+            Updates(ExportBatches.Size + 2),
+            json => {
+                events.Add($"post {JsonSerializer.Deserialize<ExportRequest>(json).Updates.Count}");
+                return Task.FromResult((Answer(json), (string) null));
+            },
+            () => true, _ => { }, batch => events.Add($"posting {batch.Count}"));
+
+        Assert.Equal([$"posting {ExportBatches.Size}", $"post {ExportBatches.Size}", "posting 2", "post 2"], events);
+    }
+
+    [Fact]
+    public async Task StoppedIsTrueOnlyWhenGoOnSaysNo() {
+        (_, _, string failure, bool failed) = await ExportBatches.Send(
+            Updates(2), _ => Task.FromResult(((string) null, "no answer")), () => true, _ => { }, _ => { });
+        Assert.NotNull(failure);
+        Assert.False(failed);
+
+        (_, _, string none, bool finished) = await ExportBatches.Send(
+            Updates(2), json => Task.FromResult((Answer(json), (string) null)), () => true, _ => { }, _ => { });
+        Assert.Null(none);
+        Assert.False(finished);
+
+        (_, _, _, bool stopped) = await ExportBatches.Send(
+            Updates(2), json => Task.FromResult((Answer(json), (string) null)), () => false, _ => { }, _ => { });
+        Assert.True(stopped);
     }
 }

@@ -22,6 +22,9 @@ internal sealed class ReaderHost {
     public string CopyPath { get; init; }
 }
 
+/// Why a write was not taken; None when it was.
+internal enum WriteRefusal { None, NothingHeld, WriteOut, Unanswered, OutOfDate, Moved }
+
 /// The URL a POST was sent to, so its answer lands only on that sheet.
 internal readonly record struct WriteToken(string Url);
 
@@ -55,6 +58,15 @@ internal static class SheetReader {
     private static bool unansweredWrite;
     // a read found a script of another protocol version, and none was taken in since
     private static bool scriptOutOfDate;
+    // what that read said, for the settings; volatile: read each frame of a menu, without the gate
+    private static volatile string outOfDateError;
+    // the sheet the held rows came from. The URL is set before Forget runs:
+    // in between, what is held describes another sheet
+    private static string heldUrl;
+
+    /// After an accepted read, a write's end and Forget: what a waiting sender
+    /// waits on. Handlers schedule, never work inline: Forget runs on the game thread.
+    public static event Action Changed;
 
     public static void Install(ReaderHost value) {
         lock (gate) {
@@ -71,8 +83,12 @@ internal static class SheetReader {
             posting = 0;
             unansweredWrite = false;
             scriptOutOfDate = false;
+            outOfDateError = null;
+            heldUrl = null;
             RemoteBests.Reset();
         }
+
+        Changed = null;
     }
 
     public static bool IsReading {
@@ -101,6 +117,9 @@ internal static class SheetReader {
             }
         }
     }
+
+    /// The out-of-date read's message, null once an answer was taken in.
+    public static string OutOfDateError => outOfDateError;
 
     /// A POST went unanswered and no read since says what it wrote.
     public static bool UnansweredWrite {
@@ -182,13 +201,18 @@ internal static class SheetReader {
                     : null;
                 if (dropped == null && outcome.Kind == ReadKind.Accepted) {
                     duplicates = RemoteBests.AcceptFresh(rows);
+                    heldUrl = flight.Url;
                     unansweredWrite = false;
                     scriptOutOfDate = false;
+                    outOfDateError = null;
                     SaveCopyLocked(flight.Url);
                 } else if (dropped == null) {
                     // only an answer taken in clears it: an unreachable sheet
                     // says nothing of the script
-                    scriptOutOfDate |= outcome.Kind == ReadKind.OutOfDate;
+                    if (outcome.Kind == ReadKind.OutOfDate) {
+                        scriptOutOfDate = true;
+                        outOfDateError = outcome.Error;
+                    }
                     RemoteBests.Fail(outcome.Error);
                 }
             } finally {
@@ -236,6 +260,26 @@ internal static class SheetReader {
         if (start != null) {
             Launch(start);
         }
+
+        if (dropped == null && outcome.Kind == ReadKind.Accepted) {
+            RaiseChanged();
+        }
+    }
+
+    // outside the gate: a handler is not ours to hold it for
+    private static void RaiseChanged() {
+        Action handlers = Changed;
+        if (handlers == null) {
+            return;
+        }
+
+        foreach (Action handler in handlers.GetInvocationList().Cast<Action>()) {
+            try {
+                handler();
+            } catch (Exception e) {
+                host.Warn("a handler of Changed threw: " + e.GetType().Name);
+            }
+        }
     }
 
     private static ReadOutcome Parse(string body, string error, out List<RemoteRow> rows, out string timing) {
@@ -261,12 +305,25 @@ internal static class SheetReader {
         return new ReadOutcome(ReadKind.Accepted);
     }
 
-    /// Before a POST is sent.
-    public static WriteToken BeginWrite() {
+    /// The check and the take in one step. accepts is RemoteBests.Accepts as read
+    /// before the updates were built: a send is never built on replaced cells.
+    public static WriteRefusal TryBeginWrite(int accepts, out WriteToken token) {
+        token = default;
         lock (gate) {
-            writes++;
-            posting++;
-            return new WriteToken(host.Url());
+            string current = host.Url();
+            WriteRefusal refusal = !RemoteBests.IsResolved || heldUrl != current ? WriteRefusal.NothingHeld
+                : posting > 0 ? WriteRefusal.WriteOut
+                : unansweredWrite ? WriteRefusal.Unanswered
+                : scriptOutOfDate ? WriteRefusal.OutOfDate
+                : RemoteBests.Accepts != accepts ? WriteRefusal.Moved
+                : WriteRefusal.None;
+            if (refusal == WriteRefusal.None) {
+                writes++;
+                posting++;
+                token = new WriteToken(current);
+            }
+
+            return refusal;
         }
     }
 
@@ -292,6 +349,7 @@ internal static class SheetReader {
         }
 
         Refresh("an export answered");
+        RaiseChanged();
     }
 
     /// The script answers its updates in order, one result each; an answer that
@@ -318,8 +376,12 @@ internal static class SheetReader {
     public static void Forget() {
         lock (gate) {
             RemoteBests.Reset();
+            // what was sent to the previous sheet says nothing of this one
+            SendLedger.Shared.Reset();
+            heldUrl = null;
             unansweredWrite = false;
             scriptOutOfDate = false;
+            outOfDateError = null;
             next?.Done.TrySetResult(new ReadOutcome(ReadKind.Cancelled));
             next = null;
             try {
@@ -331,6 +393,8 @@ internal static class SheetReader {
                 host.Warn("could not delete the saved sheet times: " + e.GetType().Name);
             }
         }
+
+        RaiseChanged();
     }
 
     /// Once, at load, before the launch read: the times of the last session.
@@ -360,6 +424,7 @@ internal static class SheetReader {
                 }
 
                 if (RemoteBests.TryAcceptSaved(rows, savedAt)) {
+                    heldUrl = url;
                     host.Info($"saved sheet times loaded: {rows.Count} rows, saved {savedAt:u}");
                 }
             } catch (Exception e) {

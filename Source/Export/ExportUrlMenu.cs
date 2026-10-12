@@ -1,5 +1,7 @@
 using System;
 using System.Globalization;
+using Microsoft.Xna.Framework;
+using Monocle;
 using SDL2;
 
 namespace Celeste.Mod.SpeedrunSheet;
@@ -19,6 +21,8 @@ public static class ExportUrlMenu {
     // still out would otherwise let the older answer overwrite the newer
     private static volatile int generation;
 
+    private static readonly Color OutOfDateColor = Calc.HexToColor("FF4040");
+
     /// Returns the Forget button, which stays hidden while no URL is set.
     public static TextMenu.Item CreateMenuEntries(TextMenu menu) {
         SrsSettings settings = SrsModule.Settings;
@@ -31,7 +35,9 @@ public static class ExportUrlMenu {
         }
 
         TextMenu.Button setButton = new(StatusLabel());
-        TextMenu.SubHeader status = new(DetailLine(settings), topPadding: false) {
+        // HeightExtra 0: no top padding, as under any button
+        TextMenuExt.SubHeaderExt status = new(DetailLine(settings)) {
+            HeightExtra = 0f,
             Visible = ExportTarget.IsSet,
         };
         TextMenu.Button forgetButton = new(Dialog.Clean("SRS_EXPORT_URL_FORGET")) {
@@ -47,8 +53,24 @@ public static class ExportUrlMenu {
                 return;
             }
 
-            string shown = checking ? Dialog.Clean("SRS_EXPORT_URL_CHECKING") : message;
+            // an out-of-date script stops every export, auto-export without a
+            // word in game: it stays here, in red, until a read is taken in
+            string outOfDate = checking ? null : SheetReader.OutOfDateError;
+            // a read answered before Dialog had loaded left the key, not its text
+            if (outOfDate != null && Dialog.Has(outOfDate)) {
+                outOfDate = Dialog.Clean(outOfDate);
+            }
+
+            // a SubHeader never wraps, and one line this long widens the whole
+            // menu: its two sentences go on two lines
+            int cut = outOfDate?.IndexOf(". ", StringComparison.Ordinal) ?? -1;
+            if (cut >= 0) {
+                outOfDate = outOfDate[..(cut + 1)].Trim() + "\n" + outOfDate[(cut + 2)..].Trim();
+            }
+
+            string shown = checking ? Dialog.Clean("SRS_EXPORT_URL_CHECKING") : outOfDate ?? message;
             status.Title = shown ?? DetailLine(settings);
+            status.TextColor = outOfDate != null ? OutOfDateColor : Color.Gray;
             status.Visible = shown != null || ExportTarget.IsSet;
         };
 

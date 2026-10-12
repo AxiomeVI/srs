@@ -26,12 +26,15 @@
         <Compile Include="../Source/Export/TimeFormat.cs" Link="Source/Export/TimeFormat.cs" />
         <Compile Include="../Source/Export/SheetTiming.cs" Link="Source/Export/SheetTiming.cs" />
         <Compile Include="../Source/Export/PendingUpdate.cs" Link="Source/Export/PendingUpdate.cs" />
+        <Compile Include="../Source/Export/ExportSend.cs" Link="Source/Export/ExportSend.cs" />
+        <Compile Include="../Source/Export/SendLedger.cs" Link="Source/Export/SendLedger.cs" />
         <Compile Include="../Source/Export/RemoteBests.cs" Link="Source/Export/RemoteBests.cs" />
         <Compile Include="../Source/Export/SheetCopy.cs" Link="Source/Export/SheetCopy.cs" />
         <Compile Include="../Source/Export/SheetReader.cs" Link="Source/Export/SheetReader.cs" />
         <Compile Include="../Source/Export/RunBook.cs" Link="Source/Export/RunBook.cs" />
         <Compile Include="../Source/Export/ExportSource.cs" Link="Source/Export/ExportSource.cs" />
         <Compile Include="../Source/Export/ExportTable.cs" Link="Source/Export/ExportTable.cs" />
+        <Compile Include="../Source/Export/AutoExport.cs" Link="Source/Export/AutoExport.cs" />
         <Compile Include="../Source/Engine/SegmentRule.cs" Link="Source/Engine/SegmentRule.cs" />
         <Compile Include="../Source/Engine/BerrySet.cs" Link="Source/Engine/BerrySet.cs" />
         <Compile Include="../Source/Engine/RowTraits.cs" Link="Source/Engine/RowTraits.cs" />
