@@ -425,12 +425,16 @@ internal static class ExportMenu {
         AddStatus(newMenu, columns.TotalWidth);
 
         string chapter = null;
+        bool improves = true;
         bool odd = false;
         UpdateRow cursorRow = null;
         foreach (PendingUpdate update in updates) {
             string group = string.IsNullOrEmpty(update.Row.Chapter) ? update.Row.Tab : update.Row.Chapter;
-            if (group != chapter) {
+            // the header comes again where the rows that beat the sheet end, so
+            // that the boundary shows within one chapter too
+            if (group != chapter || update.Improves != improves) {
                 chapter = group;
+                improves = update.Improves;
                 newMenu.Add(new GroupRow(columns, ExportTable.GroupLabel(update.Row)));
             }
 

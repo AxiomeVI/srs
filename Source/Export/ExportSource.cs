@@ -4,14 +4,14 @@ using System.Linq;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
-/// Turns this session's bests into the export screen's rows: the side being
-/// played first, then the sheet's order, a side's berry rows right under that
-/// side's own. Not SpeedrunTool's PbTimes, which are cut on the player's setting
+/// Turns this session's bests into the export screen's rows: those that beat
+/// the sheet first, then the others; in each part the side being played first,
+/// then the sheet's order, a side's berry rows right under that side's own. Not SpeedrunTool's PbTimes, which are cut on the player's setting
 /// and describe no sheet segment. Mapped through srs's own row table, so a
 /// session with no standards still exports.
 internal static class ExportSource {
     public static List<PendingUpdate> Collect(IEnumerable<RunBook.Run> runs, string playing = null) {
-        List<((int Side, int Row) Order, PendingUpdate Update)> found = [];
+        List<((int Part, int Side, int Row) Order, PendingUpdate Update)> found = [];
         foreach (RunBook.Run run in runs) {
             if (!SheetRows.TryFind(run.Scope, run.Name, out SheetRow sheetRow)) {
                 continue;
@@ -23,8 +23,9 @@ internal static class ExportSource {
             RemoteBests.TryGet(row, out RemoteRow remote);
             int side = sheetRow.Scope == playing ? -1
                 : Array.FindIndex(SheetRows.All, other => other.Scope == sheetRow.Scope);
-            found.Add(((side, Array.IndexOf(SheetRows.All, sheetRow)), PendingUpdate.Create(row, DisplayName(run),
-                run.Ticks, remote, run.Note, RemoteBests.IsDuplicate(row), RankOffsetOf(run, remote))));
+            PendingUpdate update = PendingUpdate.Create(row, DisplayName(run),
+                run.Ticks, remote, run.Note, RemoteBests.IsDuplicate(row), RankOffsetOf(run, remote));
+            found.Add(((update.Improves ? 0 : 1, side, Array.IndexOf(SheetRows.All, sheetRow)), update));
         }
 
         found.Sort((a, b) => a.Order.CompareTo(b.Order));
