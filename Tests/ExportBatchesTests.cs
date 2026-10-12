@@ -14,7 +14,7 @@ public class ExportBatchesTests {
     private static string Answer(string json, int ms = 10, int drop = 0) {
         ExportRequest request = JsonSerializer.Deserialize<ExportRequest>(json);
         var results = request.Updates.Skip(drop).Select(u => new { tab = u.Tab, chapter = u.Chapter, cp = u.Cp, status = "written" });
-        return JsonSerializer.Serialize(new { results, ms, version = 2 });
+        return JsonSerializer.Serialize(new { results, ms, version = 3 });
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class ExportBatchesTests {
 
                 return Task.FromResult(failure switch {
                     "timeout" => ((string) null, "no answer"),
-                    "script error" => ("""{"error":"lock timeout","version":2}""", (string) null),
+                    "script error" => ("""{"error":"lock timeout","version":3}""", (string) null),
                     _ => (Answer(json, drop: 1), (string) null),
                 });
             },

@@ -31,8 +31,8 @@ internal sealed class UpdateRow : TextMenu.Item {
     public SheetRowRef Row => update.Row;
 
     public override void ConfirmPressed() {
-        // a row the sheet holds twice is never written
-        if (update.Duplicate) {
+        // a duplicate, or a FileTime cell srs cannot switch, is never written
+        if (!update.Writable) {
             Audio.Play("event:/ui/main/button_invalid");
             return;
         }
@@ -60,6 +60,7 @@ internal sealed class UpdateRow : TextMenu.Item {
         Color text = Color.White * alpha;
         ExportColumns.Text(update.Label, position, columns.LabelX, text, alpha, left: true);
         ExportColumns.Text(update.RemoteText, position, columns.RemoteX, Color.Gray * alpha, alpha);
+        ExportColumns.Text(update.AdjustedText, position, columns.AdjustedX, Color.Gray * alpha, alpha);
         ExportColumns.Text(update.LocalText, position, columns.LocalX, text, alpha);
         ExportColumns.Text(update.DeltaText, position, columns.DeltaX, DeltaColor(update) * alpha, alpha);
     }
@@ -90,6 +91,10 @@ internal sealed class GroupRow(ExportColumns columns, string label) : TextMenu.I
         // the chapter the rows below belong to: the row labels do not carry it
         ExportColumns.Text(label, position, columns.LabelX, color, alpha, left: true);
         ExportColumns.Text(Dialog.Clean("SRS_EXPORT_COL_SHEET"), position, columns.RemoteX, color, alpha);
+        if (columns.HasAdjusted) {
+            ExportColumns.Text(Dialog.Clean("SRS_EXPORT_COL_ADJUSTED"), position, columns.AdjustedX, color, alpha);
+        }
+
         ExportColumns.Text(Dialog.Clean("SRS_EXPORT_COL_LOCAL"), position, columns.LocalX, color, alpha);
         ExportColumns.Text(Dialog.Clean("SRS_EXPORT_COL_DELTA"), position, columns.DeltaX, color, alpha);
     }
@@ -126,6 +131,9 @@ internal sealed class ExportColumns {
 
     public float LabelX { get; private init; }
     public float RemoteX { get; private init; }
+    // on RemoteX, with no width, when no row has an adjusted time
+    public float AdjustedX { get; private init; }
+    public bool HasAdjusted => AdjustedX > RemoteX;
     public float LocalX { get; private init; }
     public float DeltaX { get; private init; }
     public float TotalWidth => DeltaX + Pad;
@@ -172,18 +180,27 @@ internal sealed class ExportColumns {
         float remote = Math.Max(floor, Width(Dialog.Clean("SRS_EXPORT_COL_SHEET")));
         float local = Math.Max(floor, Width(Dialog.Clean("SRS_EXPORT_COL_LOCAL")));
         float delta = Math.Max(floor, Width(Dialog.Clean("SRS_EXPORT_COL_DELTA")));
+        // floored and titled only once a row fills it: see adjustedX
+        float adjusted = 0f;
         foreach (PendingUpdate u in updates) {
             label = Math.Max(label, Width(u.Label));
             remote = Math.Max(remote, Width(u.RemoteText));
+            adjusted = Math.Max(adjusted, Width(u.AdjustedText));
+
             local = Math.Max(local, Width(u.LocalText));
             delta = Math.Max(delta, Width(u.DeltaText));
         }
         float labelX = Pad + RowHeight * BoxRatio + Gap;
         float remoteX = labelX + label + Gap + remote;   // right edge
-        float localX = remoteX + Gap + local;            // right edge
+        // right edge; on RemoteX when empty
+        float adjustedX = adjusted > 0f
+            ? remoteX + Gap + Math.Max(adjusted, Math.Max(floor, Width(Dialog.Clean("SRS_EXPORT_COL_ADJUSTED"))))
+            : remoteX;
+        float localX = adjustedX + Gap + local;          // right edge
         return new ExportColumns {
             LabelX = labelX,
             RemoteX = remoteX,
+            AdjustedX = adjustedX,
             LocalX = localX,
             DeltaX = localX + Gap + delta,               // right edge
         };
@@ -443,7 +460,7 @@ internal static class ExportMenu {
         RemoteBests.IsResolved && !SheetReader.IsWriting && !SheetReader.UnansweredWrite;
 
     private static string ExportLabel(List<PendingUpdate> updates) =>
-        $"{Dialog.Clean("SRS_EXPORT_CONFIRM")} ({updates.Count(u => u.Selected && !u.Duplicate)})";
+        $"{Dialog.Clean("SRS_EXPORT_CONFIRM")} ({updates.Count(u => u.Selected && u.Writable)})";
 
     /// The two lines under the title, recomputed every frame: what is held,
     /// then what the read did (hidden, with no height, when empty). Both are
@@ -495,23 +512,15 @@ internal static class ExportMenu {
     }
 
     private static void Submit(Level level, List<PendingUpdate> updates) {
-        List<PendingUpdate> selected = updates.Where(u => u.Selected && !u.Duplicate).ToList();
-        if (selected.Count == 0) {
+        List<PendingUpdate> selected = updates.Where(u => u.Selected && u.Writable).ToList();
+        List<ExportUpdate> sent = SheetTiming.Updates(selected);
+        if (sent.Count == 0) {
             PopupMessageUtils.Show(Dialog.Clean("SRS_EXPORT_NONE_TICKED"), null);
             return;
         }
 
         int submission = generation;
 
-        List<ExportUpdate> sent = selected.Select(u => new ExportUpdate {
-            Tab = u.Row.Tab,
-            Band = u.Band,
-            Chapter = u.Row.Chapter,
-            Cp = u.Row.Cp,
-            Time = TimeFormat.FromTicks(u.LocalTicks),
-            // the raw cell, never a reformat: see PendingUpdate.RemoteCell
-            Expect = u.RemoteCell,
-        }).ToList();
         // first: a throw from the screen must not leave the POST counter raised
         ShowWorking(level);
         // before the first POST is sent: a read asked from now on cannot answer for it

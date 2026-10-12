@@ -83,6 +83,13 @@ internal sealed record SegmentRule(
     /// chapter's end it does not finish on set it aside (RunTracker.Left).
     public bool SpansLeaves { get; init; }
 
+    /// A row that starts after a wake-up (SegmentAutoDetect.WakeUpSpawns): how
+    /// it was opened says whether a Save and Quit came before its run.
+    public bool AfterWakeUp { get; init; }
+
+    /// A row whose sheet dropdown cannot say it: its note is always Unknown.
+    public bool NoSaveAndQuitNote { get; init; }
+
     /// Whether this rule asks for everything the other asks for, its
     /// berries included. berriesOf resolves a rule's set against the map
     /// (IRoomMap.BerriesOf); a set that did not resolve holds nothing and is

@@ -98,21 +98,34 @@ public static class RemoteBests {
     /// date stay: the rest of what is held is as old as it was. Builds new
     /// rows, never edits held ones, which a save may be serialising. Moves
     /// Accepts: a table reopened during the write was built on the old cells.
-    public static void ApplyWritten(IReadOnlyList<(SheetRowRef Row, string Time)> written) {
+    public static void ApplyWritten(IReadOnlyList<(SheetRowRef Row, string Time, string Timing)> written) {
         if (written.Count == 0) {
             return;
         }
 
-        Dictionary<Key, string> times = [];
-        foreach ((SheetRowRef row, string time) in written) {
-            times[KeyOf(row)] = time;
+        Dictionary<Key, (string Time, string Timing)> changes = [];
+        foreach ((SheetRowRef row, string time, string timing) in written) {
+            changes[KeyOf(row)] = (time, timing);
         }
 
         Publish(seen => {
-            List<RemoteRow> rows = seen.Rows.Select(row =>
-                times.TryGetValue(KeyOf(row), out string time) && !seen.Duplicates.Contains(KeyOf(row))
-                    ? new RemoteRow { Tab = row.Tab, Band = row.Band, Chapter = row.Chapter, Cp = row.Cp, Time = time }
-                    : row).ToList();
+            List<RemoteRow> rows = seen.Rows.Select(row => {
+                if (!changes.TryGetValue(KeyOf(row), out var change) || seen.Duplicates.Contains(KeyOf(row))) {
+                    return row;
+                }
+
+                // the buffer goes with a Timing write: the selector sync may
+                // have moved it, and the read after every export brings the new one
+                return new RemoteRow {
+                    Tab = row.Tab, Band = row.Band, Chapter = row.Chapter, Cp = row.Cp,
+                    Time = change.Time ?? row.Time,
+                    Timing = change.Timing ?? row.Timing,
+                    TimingOptions = row.TimingOptions,
+                    TimingGroup = row.TimingGroup,
+                    FileTimeBuffer = change.Timing != null ? null : row.FileTimeBuffer,
+                    RankOffset = row.RankOffset,
+                };
+            }).ToList();
             return seen with { Rows = rows, Index = Build(rows).Index, Accepts = seen.Accepts + 1 };
         });
     }

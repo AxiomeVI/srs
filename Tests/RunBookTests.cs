@@ -1,5 +1,6 @@
 using System;
 using Xunit;
+using Run = Celeste.Mod.SpeedrunSheet.RunBook.Run;
 
 namespace Celeste.Mod.SpeedrunSheet.Tests;
 
@@ -7,8 +8,9 @@ namespace Celeste.Mod.SpeedrunSheet.Tests;
 public class RunBookTests {
     private static long Ticks(double seconds) => TimeSpan.FromSeconds(seconds).Ticks;
 
-    private static SegmentRecord Record(string scope, string name, double seconds) =>
-        new(TestRules.Find(scope, name), Ticks(seconds));
+    private static SegmentRecord Record(string scope, string name, double seconds,
+        SaveAndQuitNote note = SaveAndQuitNote.Without) =>
+        new(TestRules.Find(scope, name), Ticks(seconds), note);
 
     [Fact]
     public void KeepsTheBestOfEachRow() {
@@ -47,5 +49,24 @@ public class RunBookTests {
         book.Offer([Record("2a", "Start", 61)]);
 
         Assert.Equal(2, book.All.Count);
+    }
+
+    [Fact]
+    public void ASlowerRunWithAnotherNoteChangesNothing() {
+        RunBook book = new();
+        book.Offer([Record("6a", "Hollows", 45)]);
+
+        Assert.Empty(book.Offer([Record("6a", "Hollows", 47, SaveAndQuitNote.With)]));
+        Assert.Equal(SaveAndQuitNote.Without, Assert.Single(book.All).Note);
+    }
+
+    [Fact]
+    public void AFasterRunReplacesTimeAndNote() {
+        RunBook book = new();
+        book.Offer([Record("6a", "Hollows", 45)]);
+
+        Assert.Single(book.Offer([Record("6a", "Hollows", 44, SaveAndQuitNote.With)]));
+        Run only = Assert.Single(book.All);
+        Assert.Equal((Ticks(44), SaveAndQuitNote.With), (only.Ticks, only.Note));
     }
 }

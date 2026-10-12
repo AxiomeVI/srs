@@ -17,6 +17,15 @@ public sealed class ExportUpdate {
     /// what srs believed the cell held, as the sheet displayed it. The script
     /// refuses the row rather than writing when it no longer matches.
     [JsonPropertyName("expect")] public string Expect { get; set; } = "";
+    /// the value to set the row's Timing cell to; absent when srs sets none
+    [JsonPropertyName("timing")][JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string Timing { get; set; }
+    /// what srs believed the Timing cell held
+    [JsonPropertyName("expectTiming")][JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string ExpectTiming { get; set; }
+    /// the buffer, in seconds, the time was judged through
+    [JsonPropertyName("expectBuffer")][JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? ExpectBuffer { get; set; }
 }
 
 public sealed class ExportRequest {
@@ -30,6 +39,8 @@ public sealed class ExportResult {
     [JsonPropertyName("cp")] public string Cp { get; set; } = "";
     [JsonPropertyName("status")] public string Status { get; set; } = "";
     [JsonPropertyName("reason")] public string Reason { get; set; } = "";
+    /// set, kept or refused; empty when the update carried no Timing
+    [JsonPropertyName("timing")] public string Timing { get; set; } = "";
 }
 
 /// The script answers with results, or with error and nothing else: there is
@@ -47,6 +58,18 @@ public sealed class RemoteRow {
     [JsonPropertyName("chapter")] public string Chapter { get; set; } = "";
     [JsonPropertyName("cp")] public string Cp { get; set; } = "";
     [JsonPropertyName("time")] public string Time { get; set; } = "";
+    // the five below exist only on a row with a Timing dropdown (or a helper
+    // column), and are left out of the saved copy when absent
+    [JsonPropertyName("timing")][JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string Timing { get; set; }
+    [JsonPropertyName("timingOptions")][JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string> TimingOptions { get; set; }
+    [JsonPropertyName("timingGroup")][JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string TimingGroup { get; set; }
+    [JsonPropertyName("fileTimeBuffer")][JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? FileTimeBuffer { get; set; }
+    [JsonPropertyName("rankOffset")][JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? RankOffset { get; set; }
 }
 
 internal sealed class RowsResponse {
@@ -68,7 +91,7 @@ public enum RowsFailure { None, NotTheScript, Refused, OutOfDate }
 public static class ExportProtocol {
     /// The only version of the script srs speaks. Absent means a version 1
     /// script, which the player replaces by copying the script again.
-    public const int WireVersion = 2;
+    public const int WireVersion = 3;
 
     /// Set to Dialog.Clean by ExportMenu.Load(). This file is compiled straight
     /// into the test project, which has no game reference, so the lookup has to
@@ -134,6 +157,7 @@ public static class ExportProtocol {
             r.Cp ??= "";
             r.Status ??= "";
             r.Reason ??= "";
+            r.Timing ??= "";
         }
         error = null;
         return true;

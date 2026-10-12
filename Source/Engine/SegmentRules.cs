@@ -63,6 +63,8 @@ internal static class SegmentRules {
                 i) {
                 ChapterRun = chapterRun, Berries = berries, EntryRoom = traits.EntryRoom,
                 SpansLeaves = traits.SpansLeaves,
+                AfterWakeUp = SegmentAutoDetect.WakeUpSpawns.ContainsKey(anchor),
+                NoSaveAndQuitNote = traits.NoSaveAndQuitNote,
                 Gems = (marked & Collectibles.Gem) == Collectibles.None ? 0 : chapterRun ? ChapterGems : 1,
             });
         }

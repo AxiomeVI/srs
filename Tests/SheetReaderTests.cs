@@ -47,7 +47,7 @@ public sealed class SheetReaderTests : IDisposable {
     }
 
     private static string Answer(string time) =>
-        $$"""{"rows":[{"tab":"A Sides","band":"checkpoint","chapter":"1a","cp":"Crossing","time":"{{time}}"}],"version":2}""";
+        $$"""{"rows":[{"tab":"A Sides","band":"checkpoint","chapter":"1a","cp":"Crossing","time":"{{time}}"}],"version":3}""";
 
     private int Asked {
         get {
@@ -222,9 +222,9 @@ public sealed class SheetReaderTests : IDisposable {
     // the kind as a name: ReadKind is internal, and a public test method cannot take it
     [InlineData("""{"rows":[{"tab":"A Sides","chapter":"1a","cp":"Crossing","time":"21.948"}]}""", "OutOfDate")]
     [InlineData("<!DOCTYPE html>", "NotTheScript")]
-    [InlineData("""{"error":"Config names no entry tab","version":2}""", "Refused")]
-    [InlineData("""{"rows":[],"version":2}""", "NoRows")]
-    [InlineData("""{"rows":[{"tab":"A Sides","chapter":"9z","cp":"Nowhere","time":"1.000"}],"version":2}""", "NoRows")]
+    [InlineData("""{"error":"Config names no entry tab","version":3}""", "Refused")]
+    [InlineData("""{"rows":[],"version":3}""", "NoRows")]
+    [InlineData("""{"rows":[{"tab":"A Sides","chapter":"9z","cp":"Nowhere","time":"1.000"}],"version":3}""", "NoRows")]
     public async Task AnAnswerSrsCannotUseIsNeitherAcceptedNorSaved(string body, string kind) {
         Task<ReadOutcome> read = SheetReader.Refresh("launch");
         Fetch(0).Answer.SetResult((body, null));
@@ -356,9 +356,30 @@ public sealed class SheetReaderTests : IDisposable {
         ];
         List<ExportResult> results = [new() { Status = "written" }, new() { Status = "changed" }];
 
-        (SheetRowRef row, string time) = Assert.Single(SheetReader.Written(sent, results));
-        Assert.Equal((Crossing, "21.948"), (row, time));
+        (SheetRowRef row, string time, string timing) = Assert.Single(SheetReader.Written(sent, results));
+        Assert.Equal((Crossing, "21.948", (string) null), (row, time, timing));
         // an answer that does not pair up says nothing srs can trust
         Assert.Empty(SheetReader.Written(sent, [new ExportResult { Status = "written" }]));
+    }
+
+    [Theory]
+    [InlineData("written", "set", "21.948", "S&Q")]
+    [InlineData("unchanged", "set", null, "S&Q")]
+    [InlineData("unchanged", "kept", null, "S&Q")]
+    [InlineData("written", "", "21.948", null)]
+    public void WrittenListsTheTimeAndTheTimingTheSheetNowHolds(string status, string timing, string time, string value) {
+        List<ExportUpdate> sent = [new() { Tab = "A Sides", Chapter = "1a", Cp = "Crossing", Time = "21.948", Timing = "S&Q" }];
+
+        (SheetRowRef row, string heldTime, string heldTiming) =
+            Assert.Single(SheetReader.Written(sent, [new ExportResult { Status = status, Timing = timing }]));
+        Assert.Equal((Crossing, time, value), (row, heldTime, heldTiming));
+    }
+
+    [Fact]
+    public void ARefusedOrChangedRowIsNotListed() {
+        List<ExportUpdate> sent = [new() { Tab = "A Sides", Chapter = "1a", Cp = "Crossing", Time = "21.948", Timing = "S&Q" }];
+
+        Assert.Empty(SheetReader.Written(sent, [new ExportResult { Status = "changed", Timing = "refused" }]));
+        Assert.Empty(SheetReader.Written(sent, [new ExportResult { Status = "unchanged", Timing = "" }]));
     }
 }

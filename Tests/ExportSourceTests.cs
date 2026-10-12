@@ -10,7 +10,7 @@ public class ExportSourceTests {
     private static long Ticks(double seconds) => TimeSpan.FromSeconds(seconds).Ticks;
 
     private static RunBook.Run Run(string scope, string name, double seconds) =>
-        new(scope, name, Ticks(seconds));
+        new(scope, name, Ticks(seconds), SaveAndQuitNote.Without);
 
     // the sheet's order, whatever order the session ran them in, and without
     // the standards: the rows come from srs's own table
@@ -125,5 +125,30 @@ public class ExportSourceTests {
             updates.Select(u => u.Label));
         Assert.Equal(["7a", "7arb", "7afc", "7afc", "8a", "8arb", "Farewell", "Fw FC"],
             updates.Select(u => ExportTable.GroupLabel(u.Row)));
+    }
+
+    [Fact]
+    public void PassesTheNoteTheDropdownAndTheRankOffset() {
+        RemoteBests.Reset();
+        Assert.True(SheetRows.TryFind("1a", "ARB IL", out SheetRow sheetRow));
+        SheetRowRef target = SheetRows.TargetOf(sheetRow);
+        RemoteBests.AcceptFresh([
+            new RemoteRow { Tab = target.Tab, Band = "il", Chapter = target.Chapter, Cp = target.Cp, Time = "3:00.000",
+                Timing = "IL", TimingOptions = ["IL", "FileTime"], RankOffset = 2.0 },
+        ]);
+        RunBook.Run run = new("1a", "ARB IL", Ticks(100), SaveAndQuitNote.Without);
+        PendingUpdate update = Assert.Single(ExportSource.Collect([run]));
+
+        Assert.Equal(("IL", "IL"), (update.Timing, update.ExpectTiming));
+        Assert.Equal(TimeFormat.FromTicks(Ticks(102)), update.AdjustedText);
+
+        // another scope's row never gets the offset
+        Assert.True(SheetRows.TryFind("1a", "Crossing", out SheetRow other));
+        SheetRowRef otherTarget = SheetRows.TargetOf(other);
+        RemoteBests.AcceptFresh([
+            new RemoteRow { Tab = otherTarget.Tab, Band = "checkpoint", Chapter = otherTarget.Chapter, Cp = otherTarget.Cp,
+                Time = "30.000", RankOffset = 2.0 },
+        ]);
+        Assert.Equal("", Assert.Single(ExportSource.Collect([Run("1a", "Crossing", 20)])).AdjustedText);
     }
 }

@@ -11,25 +11,38 @@ internal readonly record struct TierRows(string Time, string Tier, string Pb, st
 internal static class TierLine {
     /// `sheetTicks` is the player's own time for the row, null when unknown.
     /// The time is ranked as Speed Run Tool shows it, to the millisecond, which
-    /// is also the time the export writes and the sheet ranks. `ranked: false`
-    /// shows the time alone: no tier, so no gap.
+    /// is also the time the export writes and the sheet ranks. The tier and
+    /// the gap are taken on that time plus `rankOffsetTicks`; the time and the PB
+    /// are not. Null: time alone, no tier, no gap.
     public static TierRows Build(List<string> columns, List<TimeSpan?> thresholds, long ticks, long? sheetTicks,
-        bool ranked = true) {
+        long? rankOffsetTicks = 0) {
         string shownText = TimeFormat.FromTicks(ticks);
         TimeSpan shown = SheetData.TryParseTime(shownText) ?? TimeSpan.FromTicks(ticks);
-        string tier = ranked ? SheetData.TierOf(columns, thresholds, shown) : "";
 
         string pb = sheetTicks is { } sheet && shown.Ticks < sheet ? $"PB {TimeFormat.Delta(shown.Ticks - sheet)}" : null;
+        if (rankOffsetTicks is not { } offset) {
+            return new TierRows(shownText, "", pb, null);
+        }
 
+        TimeSpan ranked = shown + TimeSpan.FromTicks(offset);
+        string tier = SheetData.TierOf(columns, thresholds, ranked);
         string gap = SheetData.NextTier(columns, thresholds, tier) is { } next
-            ? $"{TimeFormat.Delta(shown.Ticks - next.Threshold.Ticks)} to {next.Column}"
+            ? $"{TimeFormat.Delta(ranked.Ticks - next.Threshold.Ticks)} to {next.Column}"
             : null;
         return new TierRows(shownText, tier, pb, gap);
     }
 
-    /// Whether the row's standard can rank the time srs measures. 1A's two
-    /// chapter rows are graded in file time, and srs sums chapter time.
-    public static bool Ranks(SegmentRule rule) => !(rule.SpansLeaves && rule.Scope == "1a");
+    /// What Build adds to the time before ranking it: nothing for a standard
+    /// in the basis srs measures, the row's own offset for one in file time,
+    /// and null when the sheet gave none, so the row cannot be ranked.
+    public static long? RankOffsetTicks(SegmentRule rule, RemoteRow remote) =>
+        !StandardInFileTime(rule) ? 0
+        : remote?.RankOffset is { } seconds ? SheetTiming.SecondsToTicks(seconds)
+        : null;
+
+    /// Whether the row's standard is graded in file time, a basis shifted from
+    /// the chapter time srs sums: 1A's two chapter rows.
+    public static bool StandardInFileTime(SegmentRule rule) => rule.SpansLeaves && rule.Scope == "1a";
 
     /// "1a Crossing", "6a Lake": the scope, unless the name is it ("1c",
     /// Farewell's "Farewell").

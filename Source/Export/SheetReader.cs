@@ -265,7 +265,7 @@ internal static class SheetReader {
                     unansweredWrite = true;
                 }
 
-                List<(SheetRowRef Row, string Time)> written =
+                List<(SheetRowRef Row, string Time, string Timing)> written =
                     Written(sent.Take(answered.Count).ToList(), answered);
                 if (written.Count > 0) {
                     RemoteBests.ApplyWritten(written);
@@ -279,16 +279,18 @@ internal static class SheetReader {
 
     /// The script answers its updates in order, one result each; an answer that
     /// does not pair up is trusted for nothing.
-    internal static List<(SheetRowRef Row, string Time)> Written(IReadOnlyList<ExportUpdate> sent,
+    internal static List<(SheetRowRef Row, string Time, string Timing)> Written(IReadOnlyList<ExportUpdate> sent,
         IReadOnlyList<ExportResult> results) {
-        List<(SheetRowRef Row, string Time)> written = [];
+        List<(SheetRowRef Row, string Time, string Timing)> written = [];
         if (results.Count != sent.Count) {
             return written;
         }
 
         for (int i = 0; i < sent.Count; i++) {
-            if (results[i].Status == "written") {
-                written.Add((new SheetRowRef(sent[i].Tab, sent[i].Chapter, sent[i].Cp), sent[i].Time.Trim()));
+            string time = results[i].Status == "written" ? sent[i].Time.Trim() : null;
+            string timing = results[i].Timing is "set" or "kept" ? sent[i].Timing : null;
+            if (time != null || timing != null) {
+                written.Add((new SheetRowRef(sent[i].Tab, sent[i].Chapter, sent[i].Cp), time, timing));
             }
         }
 

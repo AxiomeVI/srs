@@ -33,8 +33,9 @@ public static class TierComparison {
 
     // the player's sheet time for each record of the attempt, by serial, read
     // when the record lands (or when the sheet first answers after it), never
-    // again: exporting this very time must not take its PB away
-    private static readonly Dictionary<int, (bool Resolved, long? Ticks)> sheetTimes = [];
+    // again: exporting this very time must not take its PB away. Each entry also
+    // holds the rank offset: what the row's standard adds to a time before ranking
+    private static readonly Dictionary<int, (bool Resolved, long? Ticks, long? RankOffsetTicks)> sheetTimes = [];
     private static int sheetTimesFrom = -1;
 
     // whether the rows were drawn last frame: the hotkey steps only what shows
@@ -118,7 +119,8 @@ public static class TierComparison {
         foreach ((SegmentRecord landed, int serial) in attempt) {
             if ((!sheetTimes.TryGetValue(serial, out var held) || (!held.Resolved && RemoteBests.IsResolved))
                 && block.Find(landed.Rule.Scope, landed.Rule.Name) is { } row) {
-                sheetTimes[serial] = (RemoteBests.IsResolved, SheetTimeOf(row));
+                (long? ticks, long? rankOffset) = SheetTimeOf(landed.Rule, row);
+                sheetTimes[serial] = (RemoteBests.IsResolved, ticks, rankOffset);
             }
         }
 
@@ -130,21 +132,22 @@ public static class TierComparison {
             return;
         }
 
-        TierRows built = TierLine.Build(block.Columns, segment.Times, record.Ticks, sheetTimes[shownSerial].Ticks,
-            TierLine.Ranks(record.Rule));
+        (_, long? sheetTicks, long? rankOffsetTicks) = sheetTimes[shownSerial];
+        TierRows built = TierLine.Build(block.Columns, segment.Times, record.Ticks, sheetTicks, rankOffsetTicks);
         rows = built;
         segmentName = TierLine.NameOf(record.Rule.Scope, record.Rule.Name);
         place = attempt.Count > 1 ? $"{attempt.Count - stepsBack}/{attempt.Count}" : "";
         tierColor = built.Tier == SheetData.Unranked ? Color.Gray : TierColors.GetValueOrDefault(built.Tier, Color.White);
     }
 
-    // the time the player's own sheet holds for the row, as the export screen
-    // reads it; null without an export URL or before the sheet answered
-    private static long? SheetTimeOf(SheetSegment segment) =>
-        SheetRows.TryFind(segment.Chapter, segment.Name, out SheetRow row)
-        && RemoteBests.TryGet(SheetRows.TargetOf(row), out RemoteRow remote)
-            ? PendingUpdate.TicksOf(remote.Time)
-            : null;
+    // the time the player's own sheet holds for the row, in the basis srs
+    // measures as the export screen compares it, and the row's rank offset;
+    // no time without an export URL or before the sheet answered
+    private static (long? Ticks, long? RankOffsetTicks) SheetTimeOf(SegmentRule rule, SheetSegment segment) {
+        RemoteRow remote = SheetRows.TryFind(segment.Chapter, segment.Name, out SheetRow row)
+            && RemoteBests.TryGet(SheetRows.TargetOf(row), out RemoteRow found) ? found : null;
+        return (SheetTiming.Comparable(remote).Ticks, TierLine.RankOffsetTicks(rule, remote));
+    }
 
     // tier colors, copied from the sheet: each tier's cell fill, keyed by the
     // full column name (the rank suffix is significant). Gold takes its ink,

@@ -65,16 +65,57 @@ public class TierLineTests {
         Assert.Null(Build(47).Pb);
     }
 
-    // the sheet grades 1A's two chapter rows in file time, which srs does
-    // not measure: they show their time and no tier, and no other row does
+    // a standard graded in another basis ranks the time moved into it; what
+    // the player reads as their time, and its gain on their sheet time, stay
+    [Fact]
+    public void AnOffsetMovesTheTierAndTheGapOnly() {
+        TierRows plain = TierLine.Build(Columns, Thresholds, T(44), T(45));
+        TierRows moved = TierLine.Build(Columns, Thresholds, T(44), T(45), rankOffsetTicks: T(3));
+
+        Assert.Equal("Gold", plain.Tier);
+        Assert.Equal(("Pink", $"{TimeFormat.Delta(T(2))} to Gold"), (moved.Tier, moved.Gap));
+        Assert.Equal((plain.Time, plain.Pb), (moved.Time, moved.Pb));
+        Assert.NotNull(moved.Pb);
+    }
+
+    [Fact]
+    public void ANegativeOffsetRanksAFasterTime() {
+        TierRows rows = TierLine.Build(Columns, Thresholds, T(47), null, rankOffsetTicks: -T(3));
+
+        Assert.Equal(("Gold", (string)null), (rows.Tier, rows.Gap));
+    }
+
+    // no offset known: the time and its PB, no tier, so no gap
     [Fact]
     public void ARowSrsCannotRankShowsItsTimeAlone() {
-        TierRows rows = TierLine.Build(Columns, Thresholds, T(47), T(48), ranked: false);
+        TierRows rows = TierLine.Build(Columns, Thresholds, T(47), T(48), rankOffsetTicks: null);
 
         Assert.Equal(("", (string)null), (rows.Tier, rows.Gap));
-        Assert.NotNull(rows.Pb);
-        Assert.Equal(["1a/ARB IL", "1a/FC IL"],
-            SegmentRules.All.Where(rule => !TierLine.Ranks(rule)).Select(rule => $"{rule.Scope}/{rule.Name}"));
+        Assert.Equal(Build(47, 48).Time, rows.Time);
+        Assert.Equal(Build(47, 48).Pb, rows.Pb);
+    }
+
+    // the sheet grades 1A's two chapter rows in file time, which srs does
+    // not measure: they rank through the offset their row carries, and no
+    // other row looks at one
+    [Fact]
+    public void OnlyAStandardInFileTimeTakesTheRowsOffset() {
+        RemoteRow with = new() { RankOffset = 2.5 };
+        RemoteRow without = new();
+
+        Assert.Equal(["1a/ARB IL", "1a/FC IL"], SegmentRules.All.Where(TierLine.StandardInFileTime)
+            .Select(rule => $"{rule.Scope}/{rule.Name}"));
+        foreach (SegmentRule rule in SegmentRules.All) {
+            if (TierLine.StandardInFileTime(rule)) {
+                Assert.Equal(T(2.5), TierLine.RankOffsetTicks(rule, with));
+                // an older script, or a sheet never read
+                Assert.Null(TierLine.RankOffsetTicks(rule, without));
+                Assert.Null(TierLine.RankOffsetTicks(rule, null));
+            } else {
+                Assert.Equal(0, TierLine.RankOffsetTicks(rule, with));
+                Assert.Equal(0, TierLine.RankOffsetTicks(rule, null));
+            }
+        }
     }
 
     [Theory]

@@ -20,24 +20,34 @@ public sealed class PendingUpdate {
     /// which way the delta goes; null when there is nothing to compare or the
     /// times are equal at the millisecond
     public bool? Ahead { get; private init; }
+    /// the value srs sets the Timing cell to; null leaves it alone
+    public string Timing { get; private init; }
+    /// what the Timing cell held when read; null when Timing is null
+    public string ExpectTiming { get; private init; }
+    /// the buffer the sheet time was judged through; null unless the cell holds a
+    /// readable time entered as FileTime
+    public double? ExpectBuffer { get; private init; }
+    /// the sync group of the Timing cell, null when tied to nothing
+    public string Group { get; private init; }
+    /// the sheet's time converted to the basis srs measures (a FileTime cell), or
+    /// the time shifted into the basis the standard is graded in (1A chapter
+    /// rows); empty otherwise
+    public string AdjustedText { get; private init; } = "";
+    /// the cell holds a time entered as FileTime
+    public bool SheetIsFileTime { get; private init; }
 
-    /// The time a sheet cell holds, or null when it holds none srs can read:
-    /// empty, 0:00.000 or unreadable.
-    public static long? TicksOf(string remoteCell) => Read(remoteCell).Ticks;
+    /// a duplicate, or a FileTime cell srs has no value to switch: listed, never
+    /// ticked, never sent
+    public bool Writable => !Duplicate && !(SheetIsFileTime && Timing == null);
 
-    private static (bool Unreadable, long? Ticks) Read(string remoteCell) {
-        long? parsed = SheetData.TryParseTime(remoteCell)?.Ticks;
-        bool unreadable = (parsed == null && !string.IsNullOrWhiteSpace(remoteCell));
-        return (unreadable, unreadable || parsed == 0 ? null : parsed);
-    }
-
-    /// remoteCell is the cell as the script read it, never a parsed time. ⚠️ An
+    /// remote is the row as the script read it, never a parsed time. ⚠️ An
     /// unreadable cell is not an empty one: counted as empty it ticks the row
     /// and overwrites it, which a Google locale writing 8,704 does on every
     /// row. 0:00.000 counts as empty, the sheet's own idiom for "no time yet".
-    public static PendingUpdate Create(SheetRowRef row, string label, long localTicks, string remoteCell,
-        string band = "", bool duplicate = false) {
+    public static PendingUpdate Create(SheetRowRef row, string label, long localTicks, RemoteRow remote,
+        SaveAndQuitNote note, bool duplicate, long? rankOffsetTicks) {
         string localText = TimeFormat.FromTicks(localTicks);
+        string band = remote?.Band ?? "";
         if (duplicate) {
             return new PendingUpdate {
                 Row = row, Label = label, Band = band, Duplicate = true,
@@ -46,7 +56,10 @@ public sealed class PendingUpdate {
             };
         }
 
-        (bool unreadable, long? remoteTicks) = Read(remoteCell);
+        string remoteCell = remote?.Time;
+        (bool cellUnreadable, long? cellTicks) = SheetTiming.ReadCell(remoteCell);
+        (bool unreadable, long? remoteTicks) = SheetTiming.Comparable(remote);
+        bool fileTime = remote?.Timing == SheetTiming.FileTime;
 
         // compared as shown, to the millisecond, as the sheet and its script
         // compare: a finer time reads as behind the very cell it was written to
@@ -63,20 +76,40 @@ public sealed class PendingUpdate {
             delta = TimeFormat.Delta(shown - remoteTicks.Value);
         }
 
+        string timing = SheetTiming.Choice(remote?.TimingOptions, note);
+        bool writable = !(fileTime && timing == null);
+        if (!writable) {
+            delta = "?";
+        }
+
+        string adjusted = "";
+        if (fileTime) {
+            adjusted = remoteTicks == null ? (cellTicks == null ? "" : "?")
+                : TimeFormat.FromTicks(remoteTicks.Value) + (timing == null ? "" : " " + timing);
+        } else if (rankOffsetTicks is { } shift && shift != 0) {
+            adjusted = TimeFormat.FromTicks(localTicks + shift);
+        }
+
         return new PendingUpdate {
             Row = row,
             Label = label,
-            Band = band ?? "",
+            Band = band,
             LocalTicks = localTicks,
             LocalText = localText,
             // show the cell as it stands rather than nothing: the player is the
             // only one who can tell a locale from a typo from a note
-            RemoteText = unreadable ? remoteCell.Trim()
-                       : remoteTicks == null ? "" : TimeFormat.FromTicks(remoteTicks.Value),
+            RemoteText = cellUnreadable ? remoteCell.Trim()
+                       : cellTicks == null ? "" : TimeFormat.FromTicks(cellTicks.Value),
             RemoteCell = remoteCell ?? "",
             DeltaText = delta,
             Ahead = unreadable || remoteTicks == null || shown == remoteTicks.Value ? null : shown < remoteTicks.Value,
-            Selected = improves,
+            Selected = improves && writable,
+            Timing = timing,
+            ExpectTiming = timing == null ? null : remote.Timing,
+            ExpectBuffer = fileTime && cellTicks != null ? remote.FileTimeBuffer : null,
+            Group = remote?.TimingGroup,
+            AdjustedText = adjusted,
+            SheetIsFileTime = fileTime,
         };
     }
 }

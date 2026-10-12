@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
@@ -17,18 +18,22 @@ internal static class ExportSource {
             }
 
             SheetRowRef row = SheetRows.TargetOf(sheetRow);
-            // the raw cell, not a parsed time: PendingUpdate has to tell an
+            // the whole row, not a parsed time: PendingUpdate has to tell an
             // empty cell from one it cannot read, and only the cell says which
             RemoteBests.TryGet(row, out RemoteRow remote);
             int side = sheetRow.Scope == playing ? -1
                 : Array.FindIndex(SheetRows.All, other => other.Scope == sheetRow.Scope);
             found.Add(((side, Array.IndexOf(SheetRows.All, sheetRow)), PendingUpdate.Create(row, DisplayName(run),
-                run.Ticks, remote?.Time, remote?.Band ?? "", RemoteBests.IsDuplicate(row))));
+                run.Ticks, remote, run.Note, RemoteBests.IsDuplicate(row), RankOffsetOf(run, remote))));
         }
 
         found.Sort((a, b) => a.Order.CompareTo(b.Order));
         return found.ConvertAll(entry => entry.Update);
     }
+
+    private static long? RankOffsetOf(RunBook.Run run, RemoteRow remote) =>
+        SegmentRules.All.FirstOrDefault(rule => rule.Scope == run.Scope && rule.Name == run.Name)
+            is { } found ? TierLine.RankOffsetTicks(found, remote) : 0;
 
     /// srs names a berry row "ARB Start" and a Full Clear one "FC Start". On
     /// screen the group header says it, and dropping it collides with nothing

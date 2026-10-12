@@ -12,7 +12,7 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// The saved copy of the player's sheet times, Saves/srs/sheet-times.json:
 /// its format only. SheetReader owns the file, its lock and its log.
 internal static class SheetCopy {
-    public const int Format = 1;
+    public const int Format = 2;
     public const string AnotherSheet = "another sheet's";
 
     private sealed class CopyFile {

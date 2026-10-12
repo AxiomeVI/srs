@@ -42,9 +42,9 @@ public class ExportTableTests {
     public void ARebuildKeepsWhatThePlayerPressedAndRetakesTheRest() {
         SheetRowRef pressedRow = new("A Sides", "1a", "1a Start");
         List<PendingUpdate> rebuilt = [
-            PendingUpdate.Create(pressedRow, "Start", TimeSpan.FromSeconds(20).Ticks, ""),
-            PendingUpdate.Create(new("A Sides", "1a", "Crossing"), "Crossing", TimeSpan.FromSeconds(20).Ticks, ""),
-            PendingUpdate.Create(new("A Sides", "1a", "Chasm"), "Chasm", TimeSpan.FromSeconds(20).Ticks, "", duplicate: true),
+            PendingUpdate.Create(pressedRow, "Start", TimeSpan.FromSeconds(20).Ticks, null, SaveAndQuitNote.Unknown, false, 0),
+            PendingUpdate.Create(new("A Sides", "1a", "Crossing"), "Crossing", TimeSpan.FromSeconds(20).Ticks, null, SaveAndQuitNote.Unknown, false, 0),
+            PendingUpdate.Create(new("A Sides", "1a", "Chasm"), "Chasm", TimeSpan.FromSeconds(20).Ticks, null, SaveAndQuitNote.Unknown, true, 0),
         ];
 
         ExportTable.KeepPressed(rebuilt, new Dictionary<SheetRowRef, bool> {
@@ -56,6 +56,22 @@ public class ExportTableTests {
         Assert.True(rebuilt[1].Selected);
         // a duplicate stays unticked even if the player ticked it before
         Assert.False(rebuilt[2].Selected);
+    }
+
+    [Fact]
+    public void ARowWithNoSwitchIsNeverReticked() {
+        RemoteRow remote = new() {
+            Tab = "A Sides", Chapter = "1a", Cp = "Crossing", Time = "1:10.000", Timing = "FileTime",
+            TimingOptions = ["FileTime"], FileTimeBuffer = 5,
+        };
+        SheetRowRef row = new("A Sides", "1a", "Crossing");
+        List<PendingUpdate> rebuilt = [
+            PendingUpdate.Create(row, "Crossing", TimeSpan.FromSeconds(10).Ticks, remote, SaveAndQuitNote.Unknown, false, 0),
+        ];
+
+        ExportTable.KeepPressed(rebuilt, new Dictionary<SheetRowRef, bool> { [row] = true });
+
+        Assert.False(rebuilt[0].Selected);
     }
 
     [Theory]
