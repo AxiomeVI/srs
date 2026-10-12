@@ -32,8 +32,8 @@ internal static class ExportSource {
     }
 
     private static long? RankOffsetOf(RunBook.Run run, RemoteRow remote) =>
-        SegmentRules.All.FirstOrDefault(rule => rule.Scope == run.Scope && rule.Name == run.Name)
-            is { } found ? TierLine.RankOffsetTicks(found, remote) : 0;
+        TierLine.RankOffsetTicks(
+            SegmentRules.All.First(rule => rule.Scope == run.Scope && rule.Name == run.Name), remote);
 
     /// srs names a berry row "ARB Start" and a Full Clear one "FC Start". On
     /// screen the group header says it, and dropping it collides with nothing

@@ -457,7 +457,8 @@ internal static class ExportMenu {
     // be offered again. IsWriting is read first: EndWrite changes both in one
     // locked section, and this order leaves no frame where both read false
     private static bool CanExport() =>
-        RemoteBests.IsResolved && !SheetReader.IsWriting && !SheetReader.UnansweredWrite;
+        RemoteBests.IsResolved && !SheetReader.IsWriting && !SheetReader.UnansweredWrite
+        && !SheetReader.ScriptOutOfDate;
 
     private static string ExportLabel(List<PendingUpdate> updates) =>
         $"{Dialog.Clean("SRS_EXPORT_CONFIRM")} ({updates.Count(u => u.Selected && u.Writable)})";

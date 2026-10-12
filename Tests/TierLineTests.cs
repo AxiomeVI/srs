@@ -15,7 +15,7 @@ public class TierLineTests {
     private static long T(double seconds) => S(seconds).Ticks;
 
     private static TierRows Build(double time, double? sheet = null) =>
-        TierLine.Build(Columns, Thresholds, T(time), sheet is { } s ? T(s) : null);
+        TierLine.Build(Columns, Thresholds, T(time), sheet is { } s ? T(s) : null, 0);
 
     [Fact]
     public void TheGapAimsAtTheNextTier() {
@@ -69,7 +69,7 @@ public class TierLineTests {
     // the player reads as their time, and its gain on their sheet time, stay
     [Fact]
     public void AnOffsetMovesTheTierAndTheGapOnly() {
-        TierRows plain = TierLine.Build(Columns, Thresholds, T(44), T(45));
+        TierRows plain = TierLine.Build(Columns, Thresholds, T(44), T(45), 0);
         TierRows moved = TierLine.Build(Columns, Thresholds, T(44), T(45), rankOffsetTicks: T(3));
 
         Assert.Equal("Gold", plain.Tier);

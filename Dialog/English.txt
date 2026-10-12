@@ -64,6 +64,7 @@ SRS_EXPORT_ERR_EMPTY=       Empty response from the sheet.
 SRS_EXPORT_ERR_NO_ROWS=     The sheet returned no rows.
 SRS_EXPORT_ERR_LOGIN_PAGE=  Got a web page instead of data. Check your deployment's access level: it must be "Anyone".
 SRS_EXPORT_ERR_OUT_OF_DATE= Your sheet's script is out of date. Copy it again from the template and publish a new version of the deployment.
+SRS_EXPORT_ERR_MOD_OUT_OF_DATE= Your sheet's script is newer than this version of srs. Update srs.
 
 # Column titles. SESSION is this game session's best, not a SpeedrunTool PB;
 # DELTA is the word the speedrunning vocabulary uses in either language.

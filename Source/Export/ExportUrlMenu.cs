@@ -178,7 +178,7 @@ public static class ExportUrlMenu {
                 message = outcome.Kind switch {
                     ReadKind.Accepted => Dialog.Clean("SRS_EXPORT_URL_CHECK_OK"),
                     ReadKind.Unreachable => $"{Dialog.Clean("SRS_EXPORT_URL_CHECK_FAILED")} {outcome.Error}",
-                    ReadKind.OutOfDate => Dialog.Clean("SRS_EXPORT_ERR_OUT_OF_DATE"),
+                    ReadKind.OutOfDate => outcome.Error,
                     ReadKind.NoRows => Dialog.Clean("SRS_EXPORT_URL_CHECK_NO_ROWS"),
                     ReadKind.NotTheScript => Dialog.Clean("SRS_EXPORT_URL_CHECK_NOT_SHEET"),
                     ReadKind.Refused => $"{Dialog.Clean("SRS_EXPORT_URL_CHECK_REFUSED")} {outcome.Error}",

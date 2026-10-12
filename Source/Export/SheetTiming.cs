@@ -101,7 +101,8 @@ internal static class SheetTiming {
         }
 
         // a sync group holds one choice: a later row that chose otherwise
-        // keeps its time and sends no Timing
+        // keeps its time and sends no Timing, unless its cell is FileTime: that
+        // time needs its switch
         Dictionary<string, string> fixedValue = [];
         foreach ((PendingUpdate source, ExportUpdate update) in built) {
             string group = source.Group;

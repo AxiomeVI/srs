@@ -159,6 +159,24 @@ public class ExportProtocolTests {
         Assert.Equal("SRS_EXPORT_ERR_OUT_OF_DATE", error);
     }
 
+    // a version 2 script takes a version 3 export without its Timing values
+    [Theory]
+    [InlineData(2, "SRS_EXPORT_ERR_OUT_OF_DATE")]
+    [InlineData(4, "SRS_EXPORT_ERR_MOD_OUT_OF_DATE")]
+    public void AnotherVersionIsRefusedAndSaysWhichSideToUpdate(int version, string key) {
+        string rows = $$"""
+            {"version":{{version}},"rows":[{"tab":"A Sides","chapter":"1a","cp":"Crossing","time":"21.947"}]}
+            """;
+        string results = $$"""
+            {"version":{{version}},"results":[{"tab":"A Sides","chapter":"1a","cp":"Crossing","status":"written"}]}
+            """;
+
+        Assert.False(ExportProtocol.TryParseRows(rows, out _, out _, out string error, out RowsFailure failure));
+        Assert.Equal((RowsFailure.OutOfDate, key), (failure, error));
+        Assert.False(ExportProtocol.TryParseResponse(results, out _, out error));
+        Assert.Equal(key, error);
+    }
+
     // the script's own error wins over the version check: it says more
     [Fact]
     public void AnErrorAnswerIsAnErrorWhateverItsVersion() {
@@ -219,7 +237,7 @@ public class EndpointUrlTests {
     }
 
     [Fact]
-    public void AnUpdateWithoutTimingSerialisesAsBefore() {
+    public void AnUpdateWithoutTimingOmitsTheTimingFields() {
         string json = ExportProtocol.SerializeRequest(new ExportRequest {
             Updates = [new ExportUpdate { Tab = "A Sides", Band = "il", Chapter = "1a", Cp = "1a", Time = "1.000", Expect = "2.000" }],
         });
@@ -242,14 +260,13 @@ public class EndpointUrlTests {
     }
 
     [Fact]
-    public void AResultsTimingIsParsedAndAbsentOrNullIsEmpty() {
+    public void AResultsTimingIsParsedAndAbsentIsEmpty() {
         const string json = """
             {"results":[{"tab":"A Sides","chapter":"1a","cp":"A","status":"written","timing":"set"},
-                        {"tab":"A Sides","chapter":"1a","cp":"B","status":"written"},
-                        {"tab":"A Sides","chapter":"1a","cp":"C","status":"written","timing":null}],"version":3}
+                        {"tab":"A Sides","chapter":"1a","cp":"B","status":"written"}],"version":3}
             """;
 
         Assert.True(ExportProtocol.TryParseResponse(json, out var response, out _));
-        Assert.Equal(["set", "", ""], response.Results.Select(r => r.Timing));
+        Assert.Equal(["set", ""], response.Results.Select(r => r.Timing));
     }
 }

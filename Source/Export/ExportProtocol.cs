@@ -82,12 +82,12 @@ internal sealed class RowsResponse {
     [JsonPropertyName("version")] public int? Version { get; set; }
 }
 
-/// Wire format between the mod and the player's Apps Script Web App.
-/// Never throws: every failure path returns false with a human-readable message.
 /// Why an answer holds no rows: it is not the script's, the script refused
 /// with a reason of its own, or it speaks another protocol version.
 public enum RowsFailure { None, NotTheScript, Refused, OutOfDate }
 
+/// Wire format between the mod and the player's Apps Script Web App.
+/// Never throws: every failure path returns false with a human-readable message.
 public static class ExportProtocol {
     /// The only version of the script srs speaks. Absent means a version 1
     /// script, which the player replaces by copying the script again.
@@ -142,7 +142,7 @@ public static class ExportProtocol {
             return false;
         }
         if (response.Version != WireVersion) {
-            error = Localize("SRS_EXPORT_ERR_OUT_OF_DATE");
+            error = VersionError(response.Version);
             response = null;
             return false;
         }
@@ -157,11 +157,14 @@ public static class ExportProtocol {
             r.Cp ??= "";
             r.Status ??= "";
             r.Reason ??= "";
-            r.Timing ??= "";
         }
         error = null;
         return true;
     }
+
+    // a script ahead of the mod cannot be fixed by copying the script again
+    private static string VersionError(int? version) =>
+        Localize(version > WireVersion ? "SRS_EXPORT_ERR_MOD_OUT_OF_DATE" : "SRS_EXPORT_ERR_OUT_OF_DATE");
 
     public static bool TryParseRows(string body, out List<RemoteRow> rows, out string scriptTiming,
         out string error, out RowsFailure failure) {
@@ -189,7 +192,7 @@ public static class ExportProtocol {
         }
         if (wrapper.Version != WireVersion) {
             failure = RowsFailure.OutOfDate;
-            error = Localize("SRS_EXPORT_ERR_OUT_OF_DATE");
+            error = VersionError(wrapper.Version);
             return false;
         }
         if (wrapper.Rows == null) {

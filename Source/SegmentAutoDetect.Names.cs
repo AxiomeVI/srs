@@ -19,7 +19,8 @@ public static partial class SegmentAutoDetect {
 
     // (scope, game checkpoint) -> the room a segment really starts in, where
     // the sheet does not time it from the checkpoint's own room. The segment
-    // before ends there too: the two never overlap
+    // before ends there too, so the two never overlap; 1A's Heart is a
+    // heart-respawn row, entered from no segment before it
     internal static readonly Dictionary<(string Scope, string GameName), string> StartRoomOverrides = new() {
         // no checkpoint of the map: the room 1A's heart is collected in
         [("1a", "Heart")] = "s1",

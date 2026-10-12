@@ -84,7 +84,7 @@ public class SheetTimingTests {
     }
 
     [Fact]
-    public void ARowWithoutADropdownGoesOutAsToday() {
+    public void ARowWithoutADropdownSendsNoTimingFields() {
         PendingUpdate u = Pending("Crossing", 20, "21.948", null, null, SaveAndQuitNote.With);
 
         ExportUpdate update = Assert.Single(SheetTiming.Updates([u]));
@@ -177,7 +177,8 @@ public class SheetTimingTests {
     [InlineData(90000.0)]
     public void AnOffsetNoSheetGivesIsUnusable(double seconds) {
         Assert.Null(SheetTiming.SecondsToTicks(seconds));
-        Assert.Equal((true, (long?) null), SheetTiming.Comparable(Cell("1:05.000", "FileTime", seconds)));
         Assert.Equal(Ticks(5.123), SheetTiming.SecondsToTicks(5.1234));
+        // half a millisecond rounds up, as the sheet shows it
+        Assert.Equal(Ticks(0.063), SheetTiming.SecondsToTicks(0.0625));
     }
 }

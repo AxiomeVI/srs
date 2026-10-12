@@ -15,8 +15,9 @@ internal static class ExportClient {
 
     private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(60);
 
-    // a request of ExportBatches.Size rows takes the script about 12 s, plus up
-    // to 30 s waiting on its lock: the rest is margin for a slow day
+    // a request of ExportBatches.Size rows takes the script about 12 s (about
+    // 75 s if each sets a synced selector), plus up to 30 s waiting on its
+    // lock: the rest is margin for a slow day
     private static readonly TimeSpan WriteTimeout = TimeSpan.FromSeconds(180);
 
     // each request carries its own deadline

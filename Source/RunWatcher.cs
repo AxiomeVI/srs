@@ -11,9 +11,6 @@ namespace Celeste.Mod.SpeedrunSheet;
 // player's control, the collects, the frame chapter time stops and Restart
 // Chapter.
 public static class RunWatcher {
-    // the player has no control in these states: a start reached in one waits
-    // for control in that room. ⚠️ StIntroJump must stay out: 7A's 500m to
-    // 3000m are entered in it, from the launch, and open on the entry
     // a room walked into in one of these waits for control: a wake-up is the
     // "Wake Up" row's, and 6A's watched fall is no row's. Any other room
     // entered without control is a cutscene, which is chapter time
@@ -22,6 +19,9 @@ public static class RunWatcher {
         Player.StTempleFall, Player.StIntroMoonJump, Player.StIntroThinkForABit,
     ];
 
+    // the player has no control in these states: a start reached in one waits
+    // for control in that room. ⚠️ StIntroJump must stay out: 7A's 500m to
+    // 3000m are entered in it, from the launch, and open on the entry
     private static readonly HashSet<int> NoControlStates = [
         Player.StDummy, Player.StIntroWalk, Player.StIntroRespawn,
         Player.StIntroWakeUp, Player.StBirdDashTutorial, Player.StFrozen, Player.StReflectionFall,
@@ -97,8 +97,9 @@ public static class RunWatcher {
         bool NoLoadYet);
     private static PendingLeave leave;
 
-    // the last serial kept by a re-entry that carried nothing on: those rows
-    // are the finished run's, and go when the run that follows closes its first
+    // the last serial of a finished run's rows (a re-entry that carried
+    // nothing on or closed a chapter chain at the leave, a Return to Map split
+    // closed without a pick): they go when the next run closes its first
     private static int keptSerial;
 
     // the last level updated was 7A's credits, or the Epilogue they end in.
@@ -117,13 +118,13 @@ public static class RunWatcher {
     private static readonly List<string> following = [];
 
     /// The segments closed with a time since the attempt started, oldest
-    /// first, the most specific segment of each frame then the most specific
-    /// chapter run, each with its serial; empty after a load, and after a
-    /// level from the loader unless it is a re-entry: one that carries the
-    /// run on keeps them all, one from the map that carries nothing keeps
-    /// what closed at that leave. 7A's credits and the Epilogue after them
-    /// leave it untouched. The HUD's tier rows show the last and step back
-    /// from it.
+    /// first, each with its serial. A frame adds its most specific segment
+    /// (after the Heart Respawn piece closing under it, if any), then its most
+    /// specific chapter run. A load or a level from the loader empties it,
+    /// except a re-entry and a death that zeroes the clock with a chapter row
+    /// kept. A finished run's rows stay up until the next record (keptSerial).
+    /// 7A's credits and the Epilogue leave it untouched. The HUD's tier rows
+    /// show the last and step back from it.
     internal static IReadOnlyList<(SegmentRecord Record, int Serial)> Attempt => attempt;
     private static readonly List<(SegmentRecord Record, int Serial)> attempt = [];
 
@@ -480,7 +481,7 @@ public static class RunWatcher {
             //
             // Completed turning true is the chapter's end, and a leave: fed
             // once, here, so the exit that follows adds nothing. TimerStopped
-            // alone closes as before and is no leave: every LoadLevel resets it
+            // alone closes and is no leave: every LoadLevel resets it
             if (completed && !lastCompleted) {
                 FeedLeave(session, LeaveKind.ChapterEnd, after, end);
             } else if (stopped && !lastStopped) {
@@ -633,6 +634,12 @@ public static class RunWatcher {
             return;
         }
 
+        // a Return to Map taken in the ending is the chapter's end that
+        // already pends: a second leave would cost the run its rows at the pick
+        if (mode == LevelExit.Mode.GiveUp && leave is { Kind: LeaveKind.ChapterEnd }) {
+            return;
+        }
+
         FeedLeave(level, mode == LevelExit.Mode.SaveAndQuit ? LeaveKind.SaveAndQuit : LeaveKind.ReturnToMap);
     }
 
@@ -662,7 +669,8 @@ public static class RunWatcher {
                 leave = leave with { NoLoadYet = false };
             } else if (stage == "Stayed") {
                 // no list, or one closed without a pick: no level was left,
-                // and what closed keeps its record
+                // and what closed keeps its record, up until the next row closes
+                keptSerial = LatestSerial;
                 leave = null;
                 tracker.Drop();
             }
