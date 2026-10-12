@@ -97,8 +97,8 @@ public static class RunWatcher {
         bool NoLoadYet);
     private static PendingLeave leave;
 
-    // the last serial a re-entry kept: those rows are the finished run's, and
-    // go when the run that follows closes its first
+    // the last serial kept by a re-entry that carried nothing on: those rows
+    // are the finished run's, and go when the run that follows closes its first
     private static int keptSerial;
 
     // the last level updated was 7A's credits, or the Epilogue they end in.
@@ -119,10 +119,11 @@ public static class RunWatcher {
     /// The segments closed with a time since the attempt started, oldest
     /// first, the most specific segment of each frame then the most specific
     /// chapter run, each with its serial; empty after a load, and after a
-    /// level from the loader unless it is a re-entry after a Return to Map
-    /// or a chapter's end, which keeps what closed at that leave. 7A's credits
-    /// and the Epilogue after them leave it untouched. The HUD's
-    /// tier rows show the last and step back from it.
+    /// level from the loader unless it is a re-entry: one that carries the
+    /// run on keeps them all, one from the map that carries nothing keeps
+    /// what closed at that leave. 7A's credits and the Epilogue after them
+    /// leave it untouched. The HUD's tier rows show the last and step back
+    /// from it.
     internal static IReadOnlyList<(SegmentRecord Record, int Serial)> Attempt => attempt;
     private static readonly List<(SegmentRecord Record, int Serial)> attempt = [];
 
@@ -389,12 +390,7 @@ public static class RunWatcher {
             PendingLeave left = leave;
             leave = null;
             bool reentry = left != null && IsReentry(left, session, before);
-            if (reentry && left.Kind != LeaveKind.SaveAndQuit) {
-                // the rows that closed at the leave stay up, in this room now
-                attempt.RemoveAll(entry => entry.Serial <= left.Serial);
-                LatestRoom = room;
-                keptSerial = LatestSerial;
-            } else {
+            if (!reentry) {
                 attempt.Clear();
             }
 
@@ -408,7 +404,25 @@ public static class RunWatcher {
             // a re-entry carries on from the reading before orig: chapter
             // time counted before control comes back is the row's
             if (reentry) {
-                tracker.Reentered(left.Kind, scope, room, before, control, launching, atStart);
+                // a run that carries on keeps every row it closed. A finished
+                // one leaves its rows up until the next row closes: what
+                // closed at the leave, or all of a chapter run in pieces
+                // that closed there, whatever twin of it still carries on.
+                // A Save and Quit closes nothing
+                bool carried = tracker.Reentered(left.Kind, scope, room, before, control, launching, atStart);
+                bool chainClosed = attempt.Exists(entry => entry.Serial > left.Serial && entry.Record.Rule.SpansLeaves);
+                if (!carried || chainClosed) {
+                    if (!chainClosed) {
+                        attempt.RemoveAll(entry => entry.Serial <= left.Serial);
+                    }
+
+                    keptSerial = LatestSerial;
+                }
+
+                if (left.Kind != LeaveKind.SaveAndQuit) {
+                    // shown in this room now
+                    LatestRoom = room;
+                }
             } else {
                 tracker.Restart(scope, room, before, control, launching, atStart);
             }
@@ -433,13 +447,17 @@ public static class RunWatcher {
             // without control waits for ControlReturned. Only that death
             // lets a chapter row from the map keep the time read before it
             Func<SegmentRule, bool> spawn = AtStartSpawn(session, session.LevelData, session.RespawnPoint);
-            if (load == RoomLoad.Respawn && room == lastRoom) {
-                tracker.ClockZeroed(scope, room, before, after, control, launching, spawn);
-            } else {
+            bool firstRoomDeath = load == RoomLoad.Respawn && room == lastRoom;
+            // a chapter row kept through it keeps the rows of its pieces
+            bool kept = firstRoomDeath && tracker.ClockZeroed(scope, room, before, after, control, launching, spawn);
+            if (!firstRoomDeath) {
                 tracker.Restart(scope, room, after, control, launching, spawn);
             }
 
-            attempt.Clear();
+            if (!kept) {
+                attempt.Clear();
+            }
+
             leave = null;
             restarted = true;
         } else {
