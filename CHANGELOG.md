@@ -31,6 +31,7 @@
 - **The reference times are called *standards*.** *Update Sheet Data* is now **Update Standards**, and switching the mod back on runs it.
 - **The reference sheet moved, and srs follows it.** srs reads the new document, and repoints your settings on launch if they still name the old one. A tab you pointed elsewhere on purpose is left alone.
 - **The Keybinds screen is the one AxiomeVI's other mods share, and records a combo in one pass.** Press Confirm on a row, hold the whole combo (up to four keys or buttons) and let go. A key already held when recording starts counts only once pressed again, and **Journal** or **Delete** clears a row. With `T` and `Shift+T` bound to two hotkeys, `Shift+T` fires only its own. Hotkeys stay quiet while the window is unfocused or another mod's Keybinds screen is open. Two hotkeys on the same combo are drawn red, stick directions can be bound, and Escape cannot. The *Clear all bindings* button is gone.
+- **No warning in `log.txt` on srs's first launch.** It said the temporary export URL file could not be deleted, when its folder did not exist yet.
 - **A file or settings write that fails no longer crashes the game.** Setting or forgetting the sheet URL says when the file could not be written or deleted.
 - **Standards that cannot be saved to disk are still used for the session**, and the files on disk stay those of one download.
 - **The URL check repeats the export script's own error** when the script answers with one, where it said that something else had answered.
