@@ -90,9 +90,11 @@ public static class RunWatcher {
 
     // the level was left, and no level from the loader has been judged
     // against it yet. Reading is chapter time at the leave, Serial the last
-    // record before the leave closed anything. Never saved: a state load is
-    // a new attempt, and clears it
-    private sealed record PendingLeave(LeaveKind Kind, AreaKey Area, string Room, long Reading, int Serial);
+    // record before the leave closed anything. NoLoadYet: a split button's
+    // leave, until its mod says it loads a level for it. Never saved: a state
+    // load is a new attempt, and clears it
+    private sealed record PendingLeave(LeaveKind Kind, AreaKey Area, string Room, long Reading, int Serial,
+        bool NoLoadYet);
     private static PendingLeave leave;
 
     // the last serial a re-entry kept: those rows are the finished run's, and
@@ -144,7 +146,17 @@ public static class RunWatcher {
 
         public static Action<object> Unregister;
     }
+
+    [ModImportName("SomeSplitButtons")]
+    private static class SplitImports {
+        // observer(action, stage, frame)
+        public static Action<Action<string, string, ulong>> AddSplitObserver;
+        public static Action<Action<string, string, ulong>> RemoveSplitObserver;
+        public static Func<int> InteropVersion;
+    }
 #pragma warning restore CS0649
+
+    private static bool observing;
 
     public static void Load() {
         // hook order: see SrsModule.Load
@@ -174,6 +186,8 @@ public static class RunWatcher {
         wipeAction = SaveLoadImports.RegisterSaveLoadAction?.Invoke(null,
             (_, level) => restoredWipe = level.Wipe, null, null, null, null);
 
+        typeof(SplitImports).ModInterop();
+
         tracker = new RunTracker(SegmentRules.All, null);
     }
 
@@ -198,6 +212,9 @@ public static class RunWatcher {
             wipeAction = null;
         }
 
+        SplitImports.RemoveSplitObserver?.Invoke(OnSplitStage);
+        observing = false;
+
         restoredWipe = null;
         leave = null;
     }
@@ -215,6 +232,14 @@ public static class RunWatcher {
             : RoomLoad.Teleport;
         if (kind > roomLoad) {
             roomLoad = kind;
+        }
+
+        // here and not in Load: by a level every mod is loaded, whatever the
+        // order. Below version 3 no stage says when a split lands
+        if (isFromLoader && !observing && SplitImports.AddSplitObserver != null
+            && SplitImports.InteropVersion?.Invoke() >= 3) {
+            SplitImports.AddSplitObserver(OnSplitStage);
+            observing = true;
         }
     }
 
@@ -590,17 +615,52 @@ public static class RunWatcher {
             return;
         }
 
+        FeedLeave(level, mode == LevelExit.Mode.SaveAndQuit ? LeaveKind.SaveAndQuit : LeaveKind.ReturnToMap);
+    }
+
+    // SomeSplitButtons' split buttons: Split when one lands, then Loading (the
+    // mod loads a level for it, on this frame) or Stayed (it loads nothing).
+    // Raised from its Level.Update hook or its list's update, so after this
+    // frame was fed or inside orig; chapter time stands still from Split to
+    // its outcome. Gated like a collect.
+    // A Save and Quit split is a leave only once it loads: one that stays
+    // changes nothing. A Return to Map split is one where it lands, list or
+    // not, unless a chapter's end pends, which it would replace
+    private static void OnSplitStage(string action, string stage, ulong _) {
+        if (Engine.Scene is not Level level || afterEnding
+            || !SrsModule.Settings.Enabled || saveLoadAction == null || !fedLastFrame || Saved.Stamp != stamp) {
+            return;
+        }
+
+        if (action == "SaveAndQuit" && stage == "Loading") {
+            FeedLeave(level, LeaveKind.SaveAndQuit);
+        } else if (action == "ReturnToMap" && stage == "Split" && leave == null) {
+            FeedLeave(level, LeaveKind.ReturnToMap, noLoadYet: true);
+        } else if (action == "ReturnToMap" && leave is { NoLoadYet: true }) {
+            if (stage == "Loading") {
+                leave = leave with { NoLoadYet = false };
+            } else if (stage == "Stayed") {
+                // no list, or one closed without a pick: no level was left,
+                // and what closed keeps its record
+                leave = null;
+                tracker.Drop();
+            }
+        }
+    }
+
+    // a leave read off the level as it stands
+    private static void FeedLeave(Level level, LeaveKind kind, bool noLoadYet = false) {
         tracker.Rooms = RoomMap.For(level.Session);
-        FeedLeave(level.Session, mode == LevelExit.Mode.SaveAndQuit ? LeaveKind.SaveAndQuit : LeaveKind.ReturnToMap,
-            level.Session.Time, EndOf(level.Session, level.Tracker.GetEntity<Player>()));
+        FeedLeave(level.Session, kind, level.Session.Time, EndOf(level.Session, level.Tracker.GetEntity<Player>()),
+            noLoadYet);
     }
 
     // the serial is read before the leave closes anything: a re-entry keeps
     // the records after it
-    private static void FeedLeave(Session session, LeaveKind kind, long reading, EndState end) {
+    private static void FeedLeave(Session session, LeaveKind kind, long reading, EndState end, bool noLoadYet = false) {
         int serial = LatestSerial;
         Emit(session, tracker.Left(kind, reading, end));
-        leave = new PendingLeave(kind, session.Area, session.Level, reading, serial);
+        leave = new PendingLeave(kind, session.Area, session.Level, reading, serial, noLoadYet);
     }
 
     // whether this level from the loader carries on from the leave: the same
@@ -608,10 +668,11 @@ public static class RunWatcher {
     // chapter time where the leave read it (the saved session resumed;
     // another file or a console load reads otherwise). After a Return to Map
     // or a chapter's end, a checkpoint's own spawn, the chapter's first room
-    // excluded: entering at the chapter's start is a new attempt for everything
+    // excluded: entering at the chapter's start is a new attempt for everything.
+    // A split whose mod announced no load was not left by this level
     private static bool IsReentry(PendingLeave left, Session session, long reading) {
         // != and not Equals: AreaKey.Equals(object) always returns false
-        if (left.Area != session.Area) {
+        if (left.Area != session.Area || left.NoLoadYet) {
             return false;
         }
 
