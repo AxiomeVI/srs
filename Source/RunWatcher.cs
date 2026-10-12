@@ -633,6 +633,12 @@ public static class RunWatcher {
             return;
         }
 
+        // a Return to Map taken in the ending is the chapter's end that
+        // already pends: a second leave would cost the run its rows at the pick
+        if (mode == LevelExit.Mode.GiveUp && leave is { Kind: LeaveKind.ChapterEnd }) {
+            return;
+        }
+
         FeedLeave(level, mode == LevelExit.Mode.SaveAndQuit ? LeaveKind.SaveAndQuit : LeaveKind.ReturnToMap);
     }
 
@@ -662,7 +668,8 @@ public static class RunWatcher {
                 leave = leave with { NoLoadYet = false };
             } else if (stage == "Stayed") {
                 // no list, or one closed without a pick: no level was left,
-                // and what closed keeps its record
+                // and what closed keeps its record, up until the next row closes
+                keptSerial = LatestSerial;
                 leave = null;
                 tracker.Drop();
             }

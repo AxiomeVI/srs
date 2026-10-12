@@ -1782,6 +1782,25 @@ public class RunTrackerTests {
         Assert.Empty(t.Open);
     }
 
+    // the first chapter's end is no try: a piece from the map that reaches
+    // it with nothing fetched leaves the row waiting for what it lacks
+    [Fact]
+    public void APieceFromTheMapToTheFirstChaptersEndKeepsTheRow() {
+        Add("ARB IL", "1", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom, berries: true,
+            spans: true);
+        rooms.Berries["ARB IL"] = ["b1"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 300, One));
+        t.Reentered(LeaveKind.ReturnToMap, "1a", "6", 0, true, false, _ => false);
+        Assert.Empty(t.Left(LeaveKind.ChapterEnd, 200, One));
+        t.Reentered(LeaveKind.ChapterEnd, "1a", "6", 0, true, false, _ => false);
+
+        Assert.Equal(["ARB IL"], t.Open.Select(r => r.Name));
+    }
+
     // a Save and Quit inside a piece from the map does not start another:
     // what the piece banked before it still counts at its Return to Map
     [Fact]
@@ -1983,15 +2002,31 @@ public class RunTrackerTests {
         Assert.Equal(SaveAndQuitNote.With, NoteOf(t.ChapterTimeStopped(300, One)));
     }
 
-    [Fact]
-    public void ASplitThatStayedTurnsAWaitingStartToAnotherOpening() {
+    // the wake-up was a Save and Quit's whatever a later split did, waiting
+    // for control or already open
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ASplitThatStayedKeepsAWakeUpRowOpenedByASaveAndQuit(bool control) {
         Add("Awake", "1", null, setup: StartSetup.CurrentRoom, afterWakeUp: true);
         RunTracker t = Tracker();
 
         t.Left(LeaveKind.SaveAndQuit, 100, One);
-        t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 100, false, false, _ => true);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 100, control, false, _ => true);
         t.SplitStayed();
         t.ControlReturned("1", 140, _ => true);
+
+        Assert.Equal(SaveAndQuitNote.With, NoteOf(t.ChapterTimeStopped(300, One)));
+    }
+
+    [Fact]
+    public void AWakeUpRowWalkedIntoAndWaitingIsUnknownAfterASplitThatStayed() {
+        Add("Awake", "6", null, setup: StartSetup.CurrentRoom, afterWakeUp: true, entry: "5");
+        RunTracker t = Tracker();
+
+        t.RoomEntered("1a", "5", "6", 100, false, false, One);
+        t.SplitStayed();
+        t.ControlReturned("6", 120, _ => true);
 
         Assert.Equal(SaveAndQuitNote.Unknown, NoteOf(t.ChapterTimeStopped(300, One)));
     }

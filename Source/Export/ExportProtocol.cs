@@ -142,7 +142,7 @@ public static class ExportProtocol {
             return false;
         }
         if (response.Version != WireVersion) {
-            error = Localize("SRS_EXPORT_ERR_OUT_OF_DATE");
+            error = VersionError(response.Version);
             response = null;
             return false;
         }
@@ -162,6 +162,10 @@ public static class ExportProtocol {
         error = null;
         return true;
     }
+
+    // a script ahead of the mod cannot be fixed by copying the script again
+    private static string VersionError(int? version) =>
+        Localize(version > WireVersion ? "SRS_EXPORT_ERR_MOD_OUT_OF_DATE" : "SRS_EXPORT_ERR_OUT_OF_DATE");
 
     public static bool TryParseRows(string body, out List<RemoteRow> rows, out string scriptTiming,
         out string error, out RowsFailure failure) {
@@ -189,7 +193,7 @@ public static class ExportProtocol {
         }
         if (wrapper.Version != WireVersion) {
             failure = RowsFailure.OutOfDate;
-            error = Localize("SRS_EXPORT_ERR_OUT_OF_DATE");
+            error = VersionError(wrapper.Version);
             return false;
         }
         if (wrapper.Rows == null) {

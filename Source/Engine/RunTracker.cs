@@ -119,15 +119,17 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
 
     /// A split's Save and Quit stayed in the level: a Save and Quit may have
     /// been taken without the level reloading, so no open segment can say
-    /// whether one happened in it. Starts still waiting for control were not
-    /// opened by one either.
+    /// whether one happened in it, and neither can a start walked into and
+    /// still waiting for control.
     public void SplitStayed() {
         foreach (OpenSegment segment in open) {
             segment.Unsure = true;
         }
 
         for (int i = 0; i < pending.Count; i++) {
-            pending[i] = pending[i] with { Opening = Opening.Other };
+            if (pending[i].Opening == Opening.WalkIn) {
+                pending[i] = pending[i] with { Opening = Opening.Other };
+            }
         }
     }
 

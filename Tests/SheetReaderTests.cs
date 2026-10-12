@@ -218,6 +218,26 @@ public sealed class SheetReaderTests : IDisposable {
         Assert.Equal("timeout", RemoteBests.Error);
     }
 
+    // the copy held is no reason to send: that script would not write what
+    // srs means. An unreachable sheet says nothing of the script
+    [Fact]
+    public async Task AScriptOfAnotherVersionIsRememberedUntilARead() {
+        await HoldAnswer("21.948");
+        Task<ReadOutcome> read = SheetReader.Refresh("again");
+        Fetch(1).Answer.SetResult(("""{"version":2,"rows":[]}""", null));
+        Assert.Equal(ReadKind.OutOfDate, (await Within(read)).Kind);
+        Assert.True(RemoteBests.IsResolved);
+        Assert.True(SheetReader.ScriptOutOfDate);
+
+        read = SheetReader.Refresh("offline");
+        Fetch(2).Answer.SetResult((null, "timeout"));
+        await Within(read);
+        Assert.True(SheetReader.ScriptOutOfDate);
+
+        await HoldAnswer("21.948");
+        Assert.False(SheetReader.ScriptOutOfDate);
+    }
+
     [Theory]
     // the kind as a name: ReadKind is internal, and a public test method cannot take it
     [InlineData("""{"rows":[{"tab":"A Sides","chapter":"1a","cp":"Crossing","time":"21.948"}]}""", "OutOfDate")]

@@ -159,6 +159,24 @@ public class ExportProtocolTests {
         Assert.Equal("SRS_EXPORT_ERR_OUT_OF_DATE", error);
     }
 
+    // a version 2 script takes a version 3 export without its Timing values
+    [Theory]
+    [InlineData(2, "SRS_EXPORT_ERR_OUT_OF_DATE")]
+    [InlineData(4, "SRS_EXPORT_ERR_MOD_OUT_OF_DATE")]
+    public void AnotherVersionIsRefusedAndSaysWhichSideToUpdate(int version, string key) {
+        string rows = $$"""
+            {"version":{{version}},"rows":[{"tab":"A Sides","chapter":"1a","cp":"Crossing","time":"21.947"}]}
+            """;
+        string results = $$"""
+            {"version":{{version}},"results":[{"tab":"A Sides","chapter":"1a","cp":"Crossing","status":"written"}]}
+            """;
+
+        Assert.False(ExportProtocol.TryParseRows(rows, out _, out _, out string error, out RowsFailure failure));
+        Assert.Equal((RowsFailure.OutOfDate, key), (failure, error));
+        Assert.False(ExportProtocol.TryParseResponse(results, out _, out error));
+        Assert.Equal(key, error);
+    }
+
     // the script's own error wins over the version check: it says more
     [Fact]
     public void AnErrorAnswerIsAnErrorWhateverItsVersion() {

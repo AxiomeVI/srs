@@ -127,8 +127,25 @@ public class ExportSourceTests {
             updates.Select(u => ExportTable.GroupLabel(u.Row)));
     }
 
+    [Theory]
+    [InlineData(SaveAndQuitNote.With, "S&Q")]
+    [InlineData(SaveAndQuitNote.Without, "No S&Q")]
+    [InlineData(SaveAndQuitNote.Unknown, null)]
+    public void TheRunsNoteChoosesTheTimingValue(SaveAndQuitNote note, string timing) {
+        RemoteBests.Reset();
+        Assert.True(SheetRows.TryFind("1a", "Crossing", out SheetRow sheetRow));
+        SheetRowRef target = SheetRows.TargetOf(sheetRow);
+        RemoteBests.AcceptFresh([
+            new RemoteRow { Tab = target.Tab, Band = "checkpoint", Chapter = target.Chapter, Cp = target.Cp,
+                Time = "30.000", Timing = "", TimingOptions = ["S&Q", "No S&Q"] },
+        ]);
+        PendingUpdate update = Assert.Single(ExportSource.Collect([new("1a", "Crossing", Ticks(20), note)]));
+
+        Assert.Equal(timing, update.Timing);
+    }
+
     [Fact]
-    public void PassesTheNoteTheDropdownAndTheRankOffset() {
+    public void PassesTheDropdownAndTheRankOffset() {
         RemoteBests.Reset();
         Assert.True(SheetRows.TryFind("1a", "ARB IL", out SheetRow sheetRow));
         SheetRowRef target = SheetRows.TargetOf(sheetRow);

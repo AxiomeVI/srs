@@ -53,6 +53,8 @@ internal static class SheetReader {
     // on a screen opened after it was sent
     private static int posting;
     private static bool unansweredWrite;
+    // a read found a script of another protocol version, and none was taken in since
+    private static bool scriptOutOfDate;
 
     public static void Install(ReaderHost value) {
         lock (gate) {
@@ -68,6 +70,7 @@ internal static class SheetReader {
             writes = 0;
             posting = 0;
             unansweredWrite = false;
+            scriptOutOfDate = false;
             RemoteBests.Reset();
         }
     }
@@ -85,6 +88,16 @@ internal static class SheetReader {
         get {
             lock (gate) {
                 return posting > 0;
+            }
+        }
+    }
+
+    /// The script speaks another version: it would not write what srs sends
+    /// as srs means it, whatever copy of its rows is still held.
+    public static bool ScriptOutOfDate {
+        get {
+            lock (gate) {
+                return scriptOutOfDate;
             }
         }
     }
@@ -170,8 +183,12 @@ internal static class SheetReader {
                 if (dropped == null && outcome.Kind == ReadKind.Accepted) {
                     duplicates = RemoteBests.AcceptFresh(rows);
                     unansweredWrite = false;
+                    scriptOutOfDate = false;
                     SaveCopyLocked(flight.Url);
                 } else if (dropped == null) {
+                    // only an answer taken in clears it: an unreachable sheet
+                    // says nothing of the script
+                    scriptOutOfDate |= outcome.Kind == ReadKind.OutOfDate;
                     RemoteBests.Fail(outcome.Error);
                 }
             } finally {
@@ -302,6 +319,7 @@ internal static class SheetReader {
         lock (gate) {
             RemoteBests.Reset();
             unansweredWrite = false;
+            scriptOutOfDate = false;
             next?.Done.TrySetResult(new ReadOutcome(ReadKind.Cancelled));
             next = null;
             try {

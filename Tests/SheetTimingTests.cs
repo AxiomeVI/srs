@@ -179,5 +179,7 @@ public class SheetTimingTests {
         Assert.Null(SheetTiming.SecondsToTicks(seconds));
         Assert.Equal((true, (long?) null), SheetTiming.Comparable(Cell("1:05.000", "FileTime", seconds)));
         Assert.Equal(Ticks(5.123), SheetTiming.SecondsToTicks(5.1234));
+        // half a millisecond rounds up, as the sheet shows it
+        Assert.Equal(Ticks(0.063), SheetTiming.SecondsToTicks(0.0625));
     }
 }
