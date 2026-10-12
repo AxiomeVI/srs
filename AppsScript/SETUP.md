@@ -23,10 +23,10 @@ reachable only through a deployment URL, so an undeployed copy behaves exactly a
 5. Copy the generated `/exec` URL. It ends in `/exec`, never `/dev`: the `/dev` URL is the
    editor's own test address, it requires you to be logged in, and srs cannot use it.
 6. In Celeste, with the URL still in your clipboard: **Mod Options > Speedrun Sheet >
-   Set Sheet URL from clipboard**. It works from a paused level as well as from the title
+   Your Sheet > Set Sheet Web App URL from clipboard**. It works from a paused level as well as from the title
    screen, and it refuses anything that is not https ending in `/exec`, then asks the
    endpoint whether it answers as srs's own. Once one is set, the button reads *Replace
-   Sheet URL from clipboard*.
+   Sheet Web App URL from clipboard*.
 
 If the script is ever updated, putting the new code in your sheet is not enough on its own:
 the deployed URL keeps serving the old code until you publish a new version. **Deploy >
