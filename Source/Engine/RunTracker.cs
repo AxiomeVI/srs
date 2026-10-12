@@ -334,12 +334,16 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// Then the Current Room and map-spawn segments starting in this room
     /// open where atStart says the player is at their start, as on a
     /// Restart, and after a Save and Quit the Heart Respawn ones too. One
-    /// carried on is not opened again.
-    public void Reentered(LeaveKind kind, string scope, string room, long reading, bool control, bool launching,
+    /// carried on is not opened again. True when the run goes on: after a
+    /// Save and Quit, anything that can still record carried on; from the
+    /// map, a segment that already holds something it requires (one that
+    /// holds nothing is a twin the run never played for).
+    public bool Reentered(LeaveKind kind, string scope, string room, long reading, bool control, bool launching,
         Func<SegmentRule, bool> atStart) {
         open.Clear();
         pending.Clear();
         pendingRoom = null;
+        bool carried = false;
         foreach (OpenSegment segment in aside) {
             if (kind != LeaveKind.SaveAndQuit) {
                 if (!segment.Entered.Contains(room)) {
@@ -352,6 +356,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             segment.Start = reading;
             segment.Resumed |= kind == LeaveKind.SaveAndQuit;
             open.Add(segment);
+            carried |= kind == LeaveKind.SaveAndQuit ? !segment.Disqualified : segment.Lacked < Needs(segment.Rule);
         }
 
         aside.Clear();
@@ -359,14 +364,15 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             rule => rule.Setup != StartSetup.NextRoom
                     && (kind == LeaveKind.SaveAndQuit || rule.Setup != StartSetup.HeartRespawn) && atStart(rule),
             fromLoad: false, kind == LeaveKind.SaveAndQuit ? Opening.SaveAndQuit : Opening.Other);
+        return carried;
     }
 
     /// A death zeroed chapter time (Level.Reload, in a level's first room
     /// with nothing collected): a new attempt from the spawn, as Restart,
     /// for everything but a segment that spans leaves in a piece started
     /// from the map. It keeps the time read before the reset, `last`, and
-    /// carries on from the new reading.
-    public void ClockZeroed(string scope, string room, long last, long reading, bool control, bool launching,
+    /// carries on from the new reading. True when one was kept.
+    public bool ClockZeroed(string scope, string room, long last, long reading, bool control, bool launching,
         Func<SegmentRule, bool> atStart) {
         List<OpenSegment> kept = open.FindAll(segment => segment.Rule.SpansLeaves && segment.Lacked != null);
         foreach (OpenSegment segment in kept) {
@@ -376,6 +382,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
 
         Restart(scope, room, reading, control, launching, atStart);
         open.InsertRange(0, kept);
+        return kept.Count > 0;
     }
 
     /// Restart Chapter left the level, with the old session's last reading: the
@@ -493,6 +500,10 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     // how many of the things the rule requires the segment does not hold: a
     // berry not banked (one still following is not), a heart or a cassette,
     // each gem short
+    // how many things the rule requires in all: what Lacks counts down from
+    private int Needs(SegmentRule rule) =>
+        BitOperations.PopCount((uint)rule.Requires) + rule.Gems + (Rooms.BerriesOf(rule)?.Count ?? 0);
+
     private int Lacks(OpenSegment segment) {
         SegmentRule rule = segment.Rule;
         int lacks = BitOperations.PopCount((uint)(rule.Requires & ~segment.Collected))

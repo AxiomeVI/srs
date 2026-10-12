@@ -96,8 +96,8 @@ public static class TierComparison {
             dismissedSerial = RunWatcher.LatestSerial;
         }
 
-        // the held sheet times are the current attempt's only. A re-entry
-        // trims the attempt from its head: what stays keeps the time read
+        // the held sheet times are the current attempt's only. The attempt
+        // is only ever trimmed from its head: what stays keeps the time read
         // when it landed, and is not read again
         IReadOnlyList<(SegmentRecord Record, int Serial)> attempt = RunWatcher.Attempt;
         int from = attempt.Count > 0 ? attempt[0].Serial : int.MaxValue;

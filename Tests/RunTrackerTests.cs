@@ -1278,6 +1278,61 @@ public class RunTrackerTests {
     }
 
     [Fact]
+    public void ASaveAndQuitReentrySaysWhetherTheRunCarriesOn() {
+        Add("Start", "1", "6", setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        // nothing was set aside
+        Assert.False(t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 0, true, false, _ => false));
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.Left(LeaveKind.SaveAndQuit, 100, One);
+        Assert.True(t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 100, true, false, _ => false));
+
+        // what can no longer record carries no run
+        t.Disqualify();
+        t.Left(LeaveKind.SaveAndQuit, 200, One);
+        Assert.False(t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 200, true, false, _ => false));
+    }
+
+    [Theory]
+    [InlineData("6", true, true)]
+    // only into a room the run walked into
+    [InlineData("9b", true, false)]
+    // a chapter row holding nothing it requires is a twin the run never played for
+    [InlineData("6", false, false)]
+    public void AReentryFromTheMapSaysWhetherAChapterRowCarriesOn(string picked, bool tookABerry, bool carries) {
+        Add("Whole", "1", null, setup: StartSetup.CurrentRoom, endKind: EndKind.ChapterEnd, berries: true, spans: true);
+        rooms.Berries["Whole"] = ["a", "b"];
+        RunTracker t = Tracker();
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "1", "6", 50, true, false, One);
+        if (tookABerry) {
+            t.BerryCollected("a");
+        }
+
+        t.Left(LeaveKind.ReturnToMap, 200, One);
+
+        Assert.Equal(carries, t.Reentered(LeaveKind.ReturnToMap, "1a", picked, 0, true, false, _ => false));
+    }
+
+    [Fact]
+    public void ADeathThatZeroesTheClockSaysWhetherAChapterRowWasKept() {
+        Add("Whole", "1", null, setup: StartSetup.CurrentRoom, endKind: EndKind.ChapterEnd, berries: true, spans: true);
+        rooms.Berries["Whole"] = ["a", "b"];
+        RunTracker t = Tracker();
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        // in the chapter's own first piece nothing is kept
+        Assert.False(t.ClockZeroed("1a", "1", 40, 0, true, false, _ => true));
+
+        t.RoomEntered("1a", "1", "6", 50, true, false, One);
+        t.BerryCollected("a");
+        t.Left(LeaveKind.ReturnToMap, 200, One);
+        t.Reentered(LeaveKind.ReturnToMap, "1a", "6", 0, true, false, _ => false);
+        Assert.True(t.ClockZeroed("1a", "6", 30, 0, true, false, _ => false));
+    }
+
+    [Fact]
     public void ARowOpenedAfterALeaveDoesNotSurviveTheReentry() {
         Add("A", "1", null, setup: StartSetup.CurrentRoom);
         Add("B", "6", null, entry: "5");
