@@ -19,6 +19,22 @@ public class PendingUpdateTests {
         PendingUpdate.Create(Crossing, "Crossing", Ticks(seconds), Remote(cell), SaveAndQuitNote.Unknown, false, 0);
 
     [Fact]
+    public void ARowTheSheetLacksIsTickedAndNotOnSheet() {
+        var update = Make(41.5, null);
+
+        Assert.True(update.Selected);
+        Assert.False(update.OnSheet);
+    }
+
+    [Fact]
+    public void ARowWithAnEmptyCellIsOnSheet() {
+        var update = Make(41.5, "");
+
+        Assert.True(update.Selected);
+        Assert.True(update.OnSheet);
+    }
+
+    [Fact]
     public void AFasterLocalTimeIsAnImprovementAndIsPreselected() {
         var update = Make(67.915, "69.412");
 

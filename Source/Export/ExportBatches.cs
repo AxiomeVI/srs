@@ -17,19 +17,21 @@ internal static class ExportBatches {
     /// Sends the updates in order, each request after the previous answer: the
     /// script refuses a second one while the first holds its lock. Stops at the
     /// first request that fails, with its error. Results pairs with the first
-    /// updates, whole requests only; answered is told how many after each.
-    public static async Task<(List<ExportResult> Results, int? Ms, string Error)> Send(
+    /// updates, whole requests only; posting is told each batch just before its
+    /// request, answered how many after each. Stopped is true only when goOn said no.
+    public static async Task<(List<ExportResult> Results, int? Ms, string Error, bool Stopped)> Send(
         IReadOnlyList<ExportUpdate> updates, Func<string, Task<(string body, string error)>> post,
-        Func<bool> goOn, Action<int> answered) {
+        Func<bool> goOn, Action<int> answered, Action<IReadOnlyList<ExportUpdate>> posting) {
         List<ExportResult> results = [];
         int? ms = null;
         for (int from = 0; from < updates.Count; from += Size) {
             if (!goOn()) {
                 // the log only: the screen that would show it is gone
-                return (results, ms, "stopped: the sheet URL changed or the mod was switched off");
+                return (results, ms, "stopped: the sheet URL changed or the mod was switched off", true);
             }
 
             List<ExportUpdate> batch = updates.Skip(from).Take(Size).ToList();
+            posting(batch);
             (string body, string error) = await post(
                 ExportProtocol.SerializeRequest(new ExportRequest { Updates = batch }));
             ExportResponse response = null;
@@ -44,7 +46,7 @@ internal static class ExportBatches {
             }
 
             if (error != null) {
-                return (results, ms, error);
+                return (results, ms, error, false);
             }
 
             results.AddRange(response.Results);
@@ -55,6 +57,6 @@ internal static class ExportBatches {
             answered(results.Count);
         }
 
-        return (results, ms, null);
+        return (results, ms, null, false);
     }
 }

@@ -252,6 +252,9 @@ internal static class ExportMenu {
     // continuation checks this to know its screen is gone
     private static volatile int generation;
 
+    // read by AutoExport's worker: it sends nothing while a screen is up
+    internal static volatile bool IsOpen;
+
     public static void Load() {
         // Dialog loads after the mods do, and the launch read can be answered
         // before it, when Dialog.Clean throws: the key is logged instead
@@ -272,6 +275,10 @@ internal static class ExportMenu {
     private static void OnLevelUpdate(On.Celeste.Level.orig_Update orig, Level self) {
         orig(self);
 
+        // held back under a wipe, which would cover the popup; taken with the
+        // mod off, so a count is dropped then
+        int failed = self.Wipe == null || !SrsModule.Settings.Enabled ? AutoExport.TakeFailed() : 0;
+
         // a level replaced under an open screen would leave `menu` set and
         // Open() refusing for the session. Speed Run Tool refuses its own loads
         // while paused, but a console load does it
@@ -289,6 +296,11 @@ internal static class ExportMenu {
 
             gameThread.Clear();
             return;
+        }
+
+        if (failed > 0) {
+            PopupMessageUtils.Show(
+                Dialog.Clean("SRS_AUTOEXPORT_FAILED_1") + " " + failed + " " + Dialog.Clean("SRS_AUTOEXPORT_FAILED_2"), null);
         }
 
         // Hotkeys holds the combo at rest behind the pause menu but not behind
@@ -373,6 +385,9 @@ internal static class ExportMenu {
             openLevel.Paused = pausedBeforeOpen;
             openLevel = null;
         }
+
+        IsOpen = false;
+        AutoExport.Wake();
     }
 
     /// Puts a screen up in place of whatever is there. Every screen goes through
@@ -387,6 +402,7 @@ internal static class ExportMenu {
         level.Add(newMenu);
         menu = newMenu;
         screen = kind;
+        IsOpen = true;
     }
 
     private static void BuildTable(Level level) {
@@ -521,67 +537,46 @@ internal static class ExportMenu {
         }
 
         int submission = generation;
+        string url = ExportTarget.Url;
 
-        // first: a throw from the screen must not leave the POST counter raised
-        ShowWorking(level);
-        // before the first POST is sent: a read asked from now on cannot answer for it
-        WriteToken token = SheetReader.BeginWrite();
-
-        Logger.Log(LogLevel.Info, LogTag, $"exporting {sent.Count} row(s)");
-
-        _ = ExportBatches.Send(sent, json => ExportClient.PostAsync(token.Url, json),
-            () => SrsModule.Settings.Enabled && ExportTarget.Url == token.Url,
+        WriteRefusal refusal = ExportSend.TryStart(sent, builtOnAccepts, "manual",
+            () => SrsModule.Settings.Enabled && ExportTarget.Url == url,
             done => gameThread.Enqueue(() => {
                 if (submission == generation && screen == Screen.Writing && writingLine != null) {
                     writingLine.Title = $"{Dialog.Clean("SRS_EXPORT_WRITING")} {done}/{sent.Count}";
                 }
-            })).ContinueWith(task => {
-            List<ExportResult> results = [];
-            List<string> lines;
-            // nothing above this continuation observes a throw: the screen
-            // would stay on "Writing..." until the player leaves it
-            try {
-                (results, int? ms, string error) = task.Result;
-                foreach (ExportResult r in results) {
-                    Logger.Log(LogLevel.Info, LogTag, $"  {ExportTable.RowLabel(r.Tab, r.Chapter, r.Cp)}: {r.Status}"
-                        + (string.IsNullOrEmpty(r.Band) ? "" : $" [{r.Band}]")
-                        + (string.IsNullOrEmpty(r.Reason) ? "" : $" ({r.Reason})"));
+            }),
+            outcome => {
+                List<string> lines;
+                // a throw here would leave the screen on "Writing..."
+                try {
+                    lines = outcome.Results.Count > 0 ? ExportTable.SummaryLines(outcome.Results) : [];
+                    if (outcome.Error != null) {
+                        lines.Insert(0, outcome.Error);
+                    }
+                } catch (Exception e) {
+                    Logger.Log(LogLevel.Warn, LogTag, "an export answer could not be shown: " + e);
+                    lines = [$"{Dialog.Clean("SRS_EXPORT_ERR_UNREADABLE")} {e.GetType().Name}"];
                 }
 
-                // the measurement the batch size is checked against
-                Logger.Log(LogLevel.Info, LogTag,
-                    $"the script took {ms?.ToString() ?? "?"} ms for {results.Count} of {sent.Count} update(s)");
-                lines = results.Count > 0 ? ExportTable.SummaryLines(results) : [];
-                if (error != null) {
-                    Logger.Log(LogLevel.Warn, LogTag, "export failed: " + error);
-                    lines.Insert(0, error);
-                }
-            } catch (Exception e) {
-                Logger.Log(LogLevel.Warn, LogTag, "an export answer could not be shown: " + e);
-                lines = [$"{Dialog.Clean("SRS_EXPORT_ERR_UNREADABLE")} {e.GetType().Name}"];
-            }
-
-            // on every outcome, failed or orphaned too: the sheet may have been
-            // written whatever is shown, and EndWrite asks it again
-            try {
-                SheetReader.EndWrite(token, sent, results);
-            } catch (Exception e) {
-                Logger.Log(LogLevel.Warn, LogTag, "an export's outcome could not be recorded: " + e);
-            }
-
-            if (submission != generation) {
-                Logger.Log(LogLevel.Info, LogTag, "export resolved after its screen was replaced");
-                return;
-            }
-
-            gameThread.Enqueue(() => {
-                if (submission != generation || menu == null) {
+                if (submission != generation) {
+                    Logger.Log(LogLevel.Info, LogTag, "export resolved after its screen was replaced");
                     return;
                 }
 
-                ShowSummary(level, lines);
+                gameThread.Enqueue(() => {
+                    if (submission != generation || menu == null) {
+                        return;
+                    }
+
+                    ShowSummary(level, lines);
+                });
             });
-        });
+        if (refusal != WriteRefusal.None) {
+            return;
+        }
+
+        ShowWorking(level);
     }
 
     /// Up while nothing is held, in place of the table: rows built before the

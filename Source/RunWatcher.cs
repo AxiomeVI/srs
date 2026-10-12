@@ -787,7 +787,11 @@ public static class RunWatcher {
             }
         }
 
-        SessionBests.Record(records, session);
+        // the copy is all auto-export takes from the game thread
+        if (SessionBests.Record(records, session) && SrsModule.Settings.AutoExport) {
+            AutoExport.Offer([.. SessionBests.All], session == null ? null : SegmentAutoDetect.ScopeOf(session));
+        }
+
         LatestRoom = session.Level;
         attempt.RemoveAll(entry => entry.Serial <= keptSerial);
         // a chapter run closes with a segment: the segment first, so the rows

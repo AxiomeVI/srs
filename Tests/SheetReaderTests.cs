@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -91,6 +92,157 @@ public sealed class SheetReaderTests : IDisposable {
     private static List<ExportResult> WrittenAnswer() =>
         [new ExportResult { Tab = "A Sides", Band = "checkpoint", Chapter = "1a", Cp = "Crossing", Status = "written" }];
 
+    // a write taken the way a sender takes it, on a held answer
+    private static WriteToken Begin() {
+        Assert.Equal(WriteRefusal.None, SheetReader.TryBeginWrite(RemoteBests.Accepts, out WriteToken token));
+        return token;
+    }
+
+    [Fact]
+    public void TryBeginWriteRefusesWithNothingHeld() {
+        Assert.Equal(WriteRefusal.NothingHeld, SheetReader.TryBeginWrite(RemoteBests.Accepts, out _));
+        Assert.False(SheetReader.IsWriting);
+    }
+
+    [Fact]
+    public async Task TryBeginWriteRefusesRowsHeldFromAnotherSheet() {
+        await HoldAnswer("25.000");
+        // the URL is set before Forget runs: what is held is still the old sheet's
+        url = UrlB;
+        Assert.Equal(WriteRefusal.NothingHeld, SheetReader.TryBeginWrite(RemoteBests.Accepts, out _));
+        Assert.False(SheetReader.IsWriting);
+    }
+
+    [Fact]
+    public void ForgetEmptiesTheLedgerOfSends() {
+        RemoteRow remote = new() { Tab = Crossing.Tab, Band = "checkpoint", Chapter = Crossing.Chapter, Cp = Crossing.Cp, Time = "25.000" };
+        PendingUpdate row = PendingUpdate.Create(Crossing, "Crossing", TimeSpan.FromSeconds(20).Ticks, remote,
+            SaveAndQuitNote.Unknown, false, 0);
+        List<ExportUpdate> sent = SendLedger.Shared.Pick([row], false);
+        SendLedger.Shared.Posted(UrlA, sent);
+        SendLedger.Shared.Answered(UrlA, sent, [new ExportResult { Status = "written" }]);
+        Assert.Empty(SendLedger.Shared.Pick([row], false));
+
+        // the same time, unwritten on the next sheet, must be able to go there
+        SheetReader.Forget();
+
+        Assert.Single(SendLedger.Shared.Pick([row], false));
+    }
+
+    [Fact]
+    public async Task TryBeginWriteRefusesWhileAWriteIsOut() {
+        await HoldAnswer("25.000");
+        Begin();
+        Assert.Equal(WriteRefusal.WriteOut, SheetReader.TryBeginWrite(RemoteBests.Accepts, out _));
+    }
+
+    [Fact]
+    public async Task TryBeginWriteRefusesAfterAnUnansweredWrite() {
+        await HoldAnswer("25.000");
+        WriteToken token = Begin();
+        SheetReader.EndWrite(token, Sent("21.948"), []);
+        Assert.True(SheetReader.UnansweredWrite);
+        Assert.Equal(WriteRefusal.Unanswered, SheetReader.TryBeginWrite(RemoteBests.Accepts, out _));
+    }
+
+    [Fact]
+    public async Task TryBeginWriteRefusesAgainstAnOutOfDateScript() {
+        await HoldAnswer("25.000");
+        Task<ReadOutcome> read = SheetReader.Refresh("again");
+        Fetch(Asked - 1).Answer.SetResult(("""{"version":2,"rows":[]}""", null));
+        Assert.Equal(ReadKind.OutOfDate, (await Within(read)).Kind);
+        Assert.Equal(WriteRefusal.OutOfDate, SheetReader.TryBeginWrite(RemoteBests.Accepts, out _));
+    }
+
+    [Fact]
+    public async Task TryBeginWriteRefusesWhenAReadLandedSince() {
+        await HoldAnswer("25.000");
+        int accepts = RemoteBests.Accepts;
+        await HoldAnswer("21.948");
+        Assert.Equal(WriteRefusal.Moved, SheetReader.TryBeginWrite(accepts, out _));
+        Assert.False(SheetReader.IsWriting);
+    }
+
+    [Fact]
+    public async Task TryBeginWriteTakesTheWriteOtherwise() {
+        await HoldAnswer("25.000");
+        Assert.Equal(WriteRefusal.None, SheetReader.TryBeginWrite(RemoteBests.Accepts, out WriteToken token));
+        Assert.Equal(UrlA, token.Url);
+        Assert.True(SheetReader.IsWriting);
+    }
+
+    [Fact]
+    public async Task ChangedIsRaisedByAnAcceptedRead() {
+        int raised = 0;
+        SheetReader.Changed += () => Interlocked.Increment(ref raised);
+        await HoldAnswer("25.000");
+        // raised after the read's task completes: wait for it
+        await Until(() => Volatile.Read(ref raised) == 1);
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public async Task ChangedIsNotRaisedByAFailedOrDroppedRead() {
+        int raised = 0;
+        SheetReader.Changed += () => Interlocked.Increment(ref raised);
+
+        Task<ReadOutcome> failed = SheetReader.Refresh("launch");
+        Fetch(0).Answer.SetResult((null, "timeout"));
+        Assert.Equal(ReadKind.Unreachable, (await Within(failed)).Kind);
+
+        Task<ReadOutcome> dropped = SheetReader.Refresh("second");
+        enabled = false;
+        Fetch(1).Answer.SetResult((Answer("21.948"), null));
+        Assert.Equal(ReadKind.Cancelled, (await Within(dropped)).Kind);
+
+        // an accepted read last: a raise by either read above would make it 2
+        enabled = true;
+        Task<ReadOutcome> accepted = SheetReader.Refresh("third");
+        Fetch(2).Answer.SetResult((Answer("21.948"), null));
+        Assert.Equal(ReadKind.Accepted, (await Within(accepted)).Kind);
+        await Until(() => Volatile.Read(ref raised) >= 1);
+        await Task.Delay(50);
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public async Task ChangedIsRaisedAfterEndWriteAndForget() {
+        await HoldAnswer("25.000");
+        int raised = 0;
+        SheetReader.Changed += () => Interlocked.Increment(ref raised);
+
+        WriteToken token = Begin();
+        SheetReader.EndWrite(token, Sent("21.948"), WrittenAnswer());
+        Assert.Equal(1, raised);
+
+        SheetReader.Forget();
+        Assert.Equal(2, raised);
+    }
+
+    [Fact]
+    public async Task AThrowingHandlerDoesNotStrandTheNextRead() {
+        int raised = 0;
+        SheetReader.Changed += () => throw new InvalidOperationException();
+        SheetReader.Changed += () => Interlocked.Increment(ref raised);
+        await HoldAnswer("25.000");
+        // the handler after the one that throws still runs
+        await Until(() => Volatile.Read(ref raised) == 1);
+        Assert.Equal(1, raised);
+
+        // asked while one is out, a read still launches
+        _ = SheetReader.Refresh("one");
+        Begin();
+        Task<ReadOutcome> second = SheetReader.Refresh("two");
+        int before = Asked;
+        Fetch(before - 1).Answer.SetResult((Answer("21.948"), null));
+        await Until(() => Asked == before + 1);
+        Fetch(before).Answer.SetResult((Answer("21.948"), null));
+        Assert.Equal(ReadKind.Accepted, (await Within(second)).Kind);
+        Assert.False(SheetReader.IsReading);
+        await Until(() => Volatile.Read(ref raised) == 2);
+        Assert.Equal(2, raised);
+    }
+
     [Fact]
     public async Task JoinsAReadAskedForTheSameSheetSinceTheLastWrite() {
         Task<ReadOutcome> first = SheetReader.Refresh("launch");
@@ -106,17 +258,18 @@ public sealed class SheetReaderTests : IDisposable {
 
     [Fact]
     public async Task AReadAskedAfterAWriteWaitsForTheNextOne() {
+        await HoldAnswer("30.000");
         Task<ReadOutcome> before = SheetReader.Refresh("launch");
-        SheetReader.BeginWrite();
+        Begin();
         Task<ReadOutcome> after = SheetReader.Refresh("after a write");
         Assert.NotSame(before, after);
-        Assert.Equal(1, Asked);
+        Assert.Equal(2, Asked);
 
-        Fetch(0).Answer.SetResult((Answer("25.000"), null));
-        await Until(() => Asked == 2);
-        Assert.Null(HeldTime());
+        Fetch(1).Answer.SetResult((Answer("25.000"), null));
+        await Until(() => Asked == 3);
+        Assert.Equal("30.000", HeldTime());
 
-        Fetch(1).Answer.SetResult((Answer("21.948"), null));
+        Fetch(2).Answer.SetResult((Answer("21.948"), null));
         Assert.Equal(ReadKind.Accepted, (await Within(after)).Kind);
         // a dropped read's callers follow the next one
         Assert.Equal(ReadKind.Accepted, (await Within(before)).Kind);
@@ -127,7 +280,7 @@ public sealed class SheetReaderTests : IDisposable {
     [Fact]
     public async Task AReadStartedDuringAPostIsDropped() {
         await HoldAnswer("25.000");
-        WriteToken token = SheetReader.BeginWrite();
+        WriteToken token = Begin();
         Task<ReadOutcome> during = SheetReader.Refresh("a screen opened during the export");
         Assert.Equal(2, Asked);
 
@@ -228,14 +381,17 @@ public sealed class SheetReaderTests : IDisposable {
         Assert.Equal(ReadKind.OutOfDate, (await Within(read)).Kind);
         Assert.True(RemoteBests.IsResolved);
         Assert.True(SheetReader.ScriptOutOfDate);
+        Assert.NotNull(SheetReader.OutOfDateError);
 
         read = SheetReader.Refresh("offline");
         Fetch(2).Answer.SetResult((null, "timeout"));
         await Within(read);
         Assert.True(SheetReader.ScriptOutOfDate);
+        Assert.NotNull(SheetReader.OutOfDateError);
 
         await HoldAnswer("21.948");
         Assert.False(SheetReader.ScriptOutOfDate);
+        Assert.Null(SheetReader.OutOfDateError);
     }
 
     [Theory]
@@ -299,7 +455,7 @@ public sealed class SheetReaderTests : IDisposable {
     [Fact]
     public async Task AWrittenTimeIsSavedWithTheCopy() {
         await HoldAnswer("25.000");
-        WriteToken token = SheetReader.BeginWrite();
+        WriteToken token = Begin();
         SheetReader.EndWrite(token, Sent("21.948"), WrittenAnswer());
 
         RemoteBests.Reset();
@@ -310,7 +466,7 @@ public sealed class SheetReaderTests : IDisposable {
     [Fact]
     public async Task EndWriteForAnotherUrlAppliesNothing() {
         await HoldAnswer("25.000");
-        WriteToken token = SheetReader.BeginWrite();
+        WriteToken token = Begin();
         url = UrlB;
         SheetReader.Forget();
         await HoldAnswer("40.000");
@@ -323,7 +479,7 @@ public sealed class SheetReaderTests : IDisposable {
     [Fact]
     public async Task AnUnansweredPostKeepsExportOffUntilAReadAfterItIsTakenIn() {
         await HoldAnswer("25.000");
-        WriteToken token = SheetReader.BeginWrite();
+        WriteToken token = Begin();
         SheetReader.EndWrite(token, Sent("21.948"), []);
         Assert.True(SheetReader.UnansweredWrite);
         Assert.Equal("25.000", HeldTime());
@@ -343,7 +499,7 @@ public sealed class SheetReaderTests : IDisposable {
     [Fact]
     public async Task AnExportCutShortAppliesWhatWasAnsweredAndKeepsExportOff() {
         await HoldAnswer("25.000");
-        WriteToken token = SheetReader.BeginWrite();
+        WriteToken token = Begin();
         List<ExportUpdate> sent = [.. Sent("21.948"),
             new() { Tab = "A Sides", Band = "checkpoint", Chapter = "1a", Cp = "Chasm", Time = "30.000" }];
         SheetReader.EndWrite(token, sent, WrittenAnswer());
@@ -353,16 +509,16 @@ public sealed class SheetReaderTests : IDisposable {
     }
 
     [Fact]
-    public async Task IsWritingFromBeginWriteToEndWrite() {
+    public async Task IsWritingFromTheTakeToEndWrite() {
         await HoldAnswer("25.000");
         Assert.False(SheetReader.IsWriting);
 
-        WriteToken answered = SheetReader.BeginWrite();
+        WriteToken answered = Begin();
         Assert.True(SheetReader.IsWriting);
         SheetReader.EndWrite(answered, Sent("21.948"), WrittenAnswer());
         Assert.False(SheetReader.IsWriting);
 
-        WriteToken unanswered = SheetReader.BeginWrite();
+        WriteToken unanswered = Begin();
         Assert.True(SheetReader.IsWriting);
         SheetReader.EndWrite(unanswered, Sent("21.948"), []);
         Assert.False(SheetReader.IsWriting);

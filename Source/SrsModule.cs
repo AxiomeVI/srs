@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using FMOD.Studio;
 
 namespace Celeste.Mod.SpeedrunSheet;
@@ -33,6 +34,19 @@ public class SrsModule : EverestModule {
             Url = () => ExportTarget.Url,
             CopyPath = Path.Combine(Everest.PathSettings, "srs", "sheet-times.json"),
         });
+        ExportSend.Install(new SendHost {
+            Post = ExportClient.PostAsync,
+            Info = message => Logger.Log(LogLevel.Info, "srs", message),
+            Warn = message => Logger.Log(LogLevel.Warn, "srs", message),
+        });
+        AutoExport.Install(new AutoHost {
+            Enabled = () => Settings.Enabled,
+            Setting = () => Settings.AutoExport,
+            Url = () => ExportTarget.Url,
+            ScreenOpen = () => ExportMenu.IsOpen,
+            Info = message => Logger.Log(LogLevel.Info, "srs", message),
+            Run = action => Task.Run(action),
+        });
         SheetReader.LoadCopy();
         // Level.Update hook order: each Load wraps the previous ones, so after
         // orig the frame runs in Load order. Hotkeys polls the input before
@@ -47,6 +61,8 @@ public class SrsModule : EverestModule {
     }
 
     public override void Unload() {
+        // a reloaded module leaves these statics behind: nothing of theirs may send
+        AutoExport.Drop();
         ExportMenu.Unload();
         TierComparison.Unload();
         RunWatcher.Unload();
