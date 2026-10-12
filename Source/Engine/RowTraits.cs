@@ -5,12 +5,13 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// What a row's label does not say, by srs's (scope, name): a start from
 /// the checkpoint's map spawn, a heart that ends the row or is only required,
 /// an end on a Return to Map, an entry room of its own, a berry set that is
-/// not its checkpoint's or none at all, a dash count. A Full Clear label says
-/// nothing: all it requires is here.
+/// not its checkpoint's or none at all, a dash count, a chapter row whose
+/// route returns to the map. A Full Clear label says nothing: all it
+/// requires is here.
 internal readonly record struct RowTraits(
     bool MapSpawn = false, bool EndsOnHeart = false, Collectibles Requires = Collectibles.None,
     string EntryRoom = null, BerrySet Berries = null, bool NoBerries = false, int? Dashes = null,
-    bool EndsOnReturnToMap = false) {
+    bool EndsOnReturnToMap = false, bool SpansLeaves = false) {
     private const Collectibles Heart = Collectibles.Heart;
     private const Collectibles Cassette = Collectibles.Cassette;
     private const Collectibles Gem = Collectibles.Gem;
@@ -39,6 +40,7 @@ internal readonly record struct RowTraits(
         // 7zb, and 11 and 10zb, belong to the rows that return to the map
         [("1a", "ARB Crossing")] = new(MapSpawn: true, Requires: Heart, Berries: new BerrySet("Crossing", Except: ["7zb"])),
         [("1a", "ARB Chasm")] = new(MapSpawn: true, Berries: new BerrySet("Chasm", Except: ["11", "10zb"])),
+        [("1a", "ARB IL")] = new(Requires: Heart, SpansLeaves: true),
         [("3a", "ARB Huge Mess")] = new(Requires: Heart),
         [("3a", "ARB IL")] = new(Requires: Heart),
         [("4a", "ARB Shrine")] = new(Requires: Heart),
@@ -47,10 +49,11 @@ internal readonly record struct RowTraits(
         [("4a", "ARB Cliff Face (from RTM)")] = new(MapSpawn: true, Berries: new BerrySet("Cliff Face", Except: ["d-00b"])),
         // d-00 is entered from c-08 on the A-side, and from the berry room here
         [("4a", "ARB Cliff Face")] = new(EntryRoom: "c-10"),
-        [("4a", "ARB IL")] = new(Requires: Heart),
+        [("4a", "ARB IL")] = new(Requires: Heart, SpansLeaves: true),
         // the route walks into Depths' room and back before it returns to the map
         [("5a", "ARB Start")] = new(EndsOnReturnToMap: true),
         [("5a", "ARB Depths")] = new(MapSpawn: true),
+        [("5a", "ARB IL")] = new(SpansLeaves: true),
         // f-01 is 2500m's left berry: the first piece skips it, the second fetches it
         [("7a", "ARB 2500m-1")] = new(Berries: new BerrySet("2500 M", Except: ["f-01"])),
         [("7a", "ARB 2500m-2")] = new(MapSpawn: true, EndsOnReturnToMap: true, Berries: new BerrySet(Rooms: ["f-01"])),
@@ -58,19 +61,23 @@ internal readonly record struct RowTraits(
         [("7a", "ARB Downdraft")] = new(Berries: DowndraftBerries),
         [("7a", "ARB Updraft")] = new(Berries: new BerrySet(Rooms: ["g-01"])),
         [("7a", "ARB Nodraft")] = new(Berries: new BerrySet(Rooms: ["g-03"])),
+        [("7a", "ARB IL")] = new(SpansLeaves: true),
         [("1a", "FC Heart to RTM")] = new(EndsOnReturnToMap: true, Requires: Cassette, Berries: HeartToRtmBerries),
         [("1a", "FC Crossing to RTM")] = new(MapSpawn: true, EndsOnReturnToMap: true, Requires: Heart | Cassette, Berries: CrossingToRtmBerries),
         [("1a", "FC Chasm-2")] = new(MapSpawn: true, EndsOnReturnToMap: true, Requires: Cassette, Berries: ChasmTwoBerries),
+        [("1a", "FC IL")] = new(Requires: Heart | Cassette, SpansLeaves: true),
         // the heart of 2A's Start is a row of its own, ended by Restart Chapter
         [("2a", "FC Start")] = new(Requires: Cassette),
         [("2a", "FC IL")] = new(Requires: Cassette),
         [("3a", "FC Elevator Shaft")] = new(Requires: Cassette),
         [("3a", "FC IL")] = new(Requires: Heart | Cassette),
         [("4a", "FC Start")] = new(Requires: Cassette),
-        [("4a", "FC IL")] = new(Requires: Heart | Cassette),
+        [("4a", "FC IL")] = new(Requires: Heart | Cassette, SpansLeaves: true),
         [("5a", "FC Depths")] = new(MapSpawn: true, Requires: Heart | Cassette),
+        [("5a", "FC IL")] = new(Requires: Heart | Cassette, SpansLeaves: true),
         // the route took 6A's cassette and heart before returning to the map
         [("6a", "FC Hollows (from RTM)")] = new(MapSpawn: true, NoBerries: true),
+        [("6a", "FC IL")] = new(Requires: Heart | Cassette, NoBerries: true, SpansLeaves: true),
         [("7a", "FC Start")] = new(Requires: Gem),
         [("7a", "FC 500m")] = new(Requires: Gem),
         [("7a", "FC 1000m")] = new(Requires: Gem),

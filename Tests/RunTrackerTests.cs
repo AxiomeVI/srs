@@ -25,9 +25,9 @@ public class RunTrackerTests {
     private SegmentRule Add(string name, string start, string end, Collectibles requires = Collectibles.None,
         EndKind endKind = EndKind.NextStart, Collectibles endsOn = Collectibles.None, int? dashes = null,
         StartKind startKind = StartKind.Room, StartSetup setup = StartSetup.NextRoom, long head = 0, long tail = 0,
-        bool berries = false, string scope = "1a", string entry = null, int gems = 0) {
+        bool berries = false, string scope = "1a", string entry = null, int gems = 0, bool spans = false) {
         SegmentRule rule = new(scope, name, name, startKind, setup, endKind, endsOn, requires, dashes,
-            head, tail, rules.Count) { Berries = berries ? BerrySet.WholeChapter : null, Gems = gems };
+            head, tail, rules.Count) { Berries = berries ? BerrySet.WholeChapter : null, Gems = gems, SpansLeaves = spans };
         rules.Add(rule);
         rooms.ByName[name] = (start, end);
         if (entry != null) {
@@ -1485,5 +1485,286 @@ public class RunTrackerTests {
 
         Assert.Equal(["ARB Heart to RTM"], t.Open.Select(r => r.Name));
         Assert.Equal([("ARB Heart to RTM", 150L)], Of(t.Left(LeaveKind.ReturnToMap, 250, One)));
+    }
+
+    // 6A's full clear: the heart and the cassette, a Return to Map, then the
+    // rest of the chapter from Hollows. The leave does not end the row though
+    // it holds all it requires: no piece has reached the chapter's end. The
+    // level entered from the map starts its clock at zero
+    [Fact]
+    public void ASpanningRowIsSetAsideByAReturnToMapAndEndsWithTheChapter() {
+        Add("FC IL", "start", null, Collectibles.Heart | Collectibles.Cassette, endKind: EndKind.ChapterEnd,
+            setup: StartSetup.CurrentRoom, spans: true);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "start", 0, true, false, _ => true);
+        t.RoomEntered("1a", "03", "04", 150, true, false, One);
+        t.Collected(Collectibles.Cassette, 200, One);
+        t.Collected(Collectibles.Heart, 250, One);
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 300, One));
+        Assert.Empty(t.Open);
+
+        t.Reentered(LeaveKind.ReturnToMap, "1a", "04", 0, true, false, _ => false);
+        Assert.Equal(["FC IL"], t.Open.Select(r => r.Name));
+        Assert.Equal([("FC IL", 800L)], Of(t.Left(LeaveKind.ChapterEnd, 500, One)));
+    }
+
+    // 1A's berry run through Chasm first: the chapter's end leaves two rooms'
+    // berries to fetch, each from a checkpoint picked on the map. The row
+    // ends on the Return to Map that finds everything collected, and the
+    // plain chapter row beside it ends with the chapter as before
+    [Fact]
+    public void ASpanningRowLackingABerryOutlivesTheChaptersEndAndEndsOnAReturnToMap() {
+        Add("IL", "1", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom);
+        Add("ARB IL", "1", null, Collectibles.Heart, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom,
+            berries: true, spans: true);
+        rooms.Berries["ARB IL"] = ["b1", "b2", "b3"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        t.BerryCollected("b1");
+        t.Collected(Collectibles.Heart, 150, One);
+        t.RoomEntered("1a", "9", "9b", 250, true, false, One);
+        Assert.Equal([("IL", 400L)], Of(t.Left(LeaveKind.ChapterEnd, 400, One)));
+
+        t.Reentered(LeaveKind.ChapterEnd, "1a", "6", 0, true, false, _ => false);
+        t.BerryCollected("b2");
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 60, One));
+
+        t.Reentered(LeaveKind.ReturnToMap, "1a", "9b", 0, true, false, _ => false);
+        t.BerryCollected("b3");
+        Assert.Equal([("ARB IL", 590L)], Of(t.Left(LeaveKind.ReturnToMap, 130, One)));
+        Assert.Empty(t.Open);
+    }
+
+    // the game loses a berry still following at a Return to Map, so the row
+    // does not end there; it ends on the leave after the berry is banked.
+    // The piece banked another berry, or the row would be gone with it
+    [Fact]
+    public void ABerryFollowingAtAReturnToMapDoesNotEndASpanningRow() {
+        Add("ARB IL", "1", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom, berries: true,
+            spans: true);
+        rooms.Berries["ARB IL"] = ["b1", "b2"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        t.Left(LeaveKind.ChapterEnd, 400, One);
+        t.Reentered(LeaveKind.ChapterEnd, "1a", "6", 0, true, false, _ => false);
+        t.BerryCollected("b1");
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 60, new EndState(1, ["b2"])));
+
+        t.Reentered(LeaveKind.ReturnToMap, "1a", "6", 0, true, false, _ => false);
+        t.BerryCollected("b2");
+        Assert.Equal([("ARB IL", 490L)], Of(t.Left(LeaveKind.ReturnToMap, 30, One)));
+    }
+
+    // 1A's heart room: the berry there can still be following when the Save
+    // and Quit is taken, and the game loses it. The chapter's end then finds
+    // the row one berry short, and it ends once the berry is fetched
+    [Fact]
+    public void ABerryFollowingAtASaveAndQuitIsNotCountedForASpanningRow() {
+        Add("ARB IL", "1", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom, berries: true,
+            spans: true);
+        rooms.Berries["ARB IL"] = ["s1:9"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 50, true, false, One);
+        t.Left(LeaveKind.SaveAndQuit, 100, new EndState(1, ["s1:9"]));
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "s1", 100, true, false, _ => false);
+        Assert.Empty(t.Left(LeaveKind.ChapterEnd, 400, One));
+
+        t.Reentered(LeaveKind.ChapterEnd, "1a", "6", 0, true, false, _ => false);
+        t.BerryCollected("s1:9");
+        Assert.Equal([("ARB IL", 450L)], Of(t.Left(LeaveKind.ReturnToMap, 50, One)));
+    }
+
+    // only a row that spans leaves outlives a Return to Map, or a chapter's
+    // end it does not finish on: the plain chapter row beside it, one heart
+    // short like it, is dropped there. A Save and Quit taken in the ending
+    // resumes all that is set aside, whatever the room
+    [Theory]
+    [InlineData("return to map")]
+    [InlineData("chapter end")]
+    [InlineData("save and quit in the ending")]
+    public void OnlyARowThatSpansLeavesOutlivesAReturnToMapOrAChaptersEnd(string how) {
+        Add("ARB IL", "1", null, Collectibles.Heart, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom);
+        Add("FC IL", "1", null, Collectibles.Heart, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom,
+            spans: true);
+        RunTracker t = Tracker();
+        LeaveKind kind = how == "return to map" ? LeaveKind.ReturnToMap : LeaveKind.ChapterEnd;
+        long resumed = 0;
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        Assert.Empty(t.Left(kind, 300, One));
+        if (how == "save and quit in the ending") {
+            resumed = 300;
+            Assert.Empty(t.Left(LeaveKind.SaveAndQuit, resumed, One));
+            t.Reentered(LeaveKind.SaveAndQuit, "1a", "6", resumed, true, false, _ => false);
+        } else {
+            t.Reentered(kind, "1a", "6", resumed, true, false, _ => false);
+        }
+
+        Assert.Equal(["FC IL"], t.Open.Select(r => r.Name));
+        t.Collected(Collectibles.Heart, resumed + 50, One);
+        Assert.Equal([("FC IL", 500L)], Of(t.Left(LeaveKind.ChapterEnd, resumed + 200, One)));
+    }
+
+    // a Return to Map taken during the ending: the row the chapter's end set
+    // aside is not open, and gains no time
+    [Fact]
+    public void ALeaveDuringTheEndingAddsNoTimeToASpanningRow() {
+        Add("ARB IL", "1", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom, berries: true,
+            spans: true);
+        rooms.Berries["ARB IL"] = ["b1"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        t.Left(LeaveKind.ChapterEnd, 400, One);
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 430, One));
+
+        t.Reentered(LeaveKind.ReturnToMap, "1a", "6", 0, true, false, _ => false);
+        t.BerryCollected("b1");
+        Assert.Equal([("ARB IL", 450L)], Of(t.Left(LeaveKind.ReturnToMap, 50, One)));
+    }
+
+    // what a try from the map must fetch to count: something the row still
+    // lacked, banked. A berry still following is lost with the level, and
+    // the heart of an earlier piece comes back as a ghost. A piece to the
+    // chapter's end is a try as well, once the row has completed
+    [Theory]
+    [InlineData("a berry in tow", false)]
+    [InlineData("the heart again", false)]
+    [InlineData("the cassette", true)]
+    [InlineData("a gem", true)]
+    [InlineData("nothing, to the chapter's end", false)]
+    public void ATryFromTheMapCountsOnlyForWhatTheRowStillLacked(string what, bool kept) {
+        Add("FC IL", "1", null, Collectibles.Heart | Collectibles.Cassette, endKind: EndKind.ChapterEnd,
+            setup: StartSetup.CurrentRoom, berries: true, gems: 1, spans: true);
+        rooms.Berries["FC IL"] = ["b1"];
+        RunTracker t = Tracker();
+        LeaveKind leave = what == "nothing, to the chapter's end" ? LeaveKind.ChapterEnd : LeaveKind.ReturnToMap;
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        t.Collected(Collectibles.Heart, 150, One);
+        t.Left(LeaveKind.ChapterEnd, 400, One);
+        t.Reentered(LeaveKind.ChapterEnd, "1a", "6", 0, true, false, _ => false);
+        Assert.Equal(["FC IL"], t.Open.Select(r => r.Name));
+        if (what is "the heart again" or "the cassette" or "a gem") {
+            t.Collected(what == "the cassette" ? Collectibles.Cassette
+                : what == "a gem" ? Collectibles.Gem : Collectibles.Heart, 20, One);
+        }
+
+        Assert.Empty(t.Left(leave, 60, what == "a berry in tow" ? new EndState(1, ["b1"]) : One));
+        t.Reentered(leave, "1a", "6", 0, true, false, _ => false);
+        Assert.Equal(kept ? ["FC IL"] : [], t.Open.Select(r => r.Name));
+    }
+
+    // a chapter row already completed, then a checkpoint tried five times
+    // from the map to the chapter's end with nothing the row lacked: no try
+    // adds up, the row is dropped at the first. A piece that fetches what the
+    // row lacked is kept, at a chapter's end as at a Return to Map
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TriesFromTheMapToTheChaptersEndDoNotAddUpIntoACompletedRow(bool fetches) {
+        Add("ARB IL", "1", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom, berries: true,
+            spans: true);
+        rooms.Berries["ARB IL"] = ["b1"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        t.RoomEntered("1a", "9", "9b", 250, true, false, One);
+        Assert.Empty(t.Left(LeaveKind.ChapterEnd, 1000, One));
+        t.Reentered(LeaveKind.ChapterEnd, "1a", "9b", 0, true, false, _ => false);
+        if (fetches) {
+            t.BerryCollected("b1");
+            Assert.Equal([("ARB IL", 1200L)], Of(t.Left(LeaveKind.ChapterEnd, 200, One)));
+            return;
+        }
+
+        Assert.Empty(t.Left(LeaveKind.ChapterEnd, 200, One));
+        t.Reentered(LeaveKind.ChapterEnd, "1a", "9b", 0, true, false, _ => false);
+        Assert.Empty(t.Open);
+    }
+
+    // a Save and Quit inside a piece from the map does not start another:
+    // what the piece banked before it still counts at its Return to Map
+    [Fact]
+    public void ASaveAndQuitInsideAPieceFromTheMapKeepsWhatItFetched() {
+        Add("ARB IL", "1", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom, berries: true,
+            spans: true);
+        rooms.Berries["ARB IL"] = ["b1", "b2"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        t.Left(LeaveKind.ChapterEnd, 400, One);
+        t.Reentered(LeaveKind.ChapterEnd, "1a", "6", 0, true, false, _ => false);
+        t.BerryCollected("b1");
+        t.Left(LeaveKind.SaveAndQuit, 30, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "6", 30, true, false, _ => false);
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 60, One));
+
+        t.Reentered(LeaveKind.ReturnToMap, "1a", "6", 0, true, false, _ => false);
+        t.BerryCollected("b2");
+        Assert.Equal([("ARB IL", 510L)], Of(t.Left(LeaveKind.ReturnToMap, 50, One)));
+    }
+
+    // a checkpoint the run has not reached, picked on the map: the row would
+    // skip what lies between, so it does not carry on there
+    [Fact]
+    public void ACheckpointPickedAheadOfTheRunDropsASpanningRow() {
+        Add("FC IL", "start", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom, spans: true);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "start", 0, true, false, _ => true);
+        t.RoomEntered("1a", "03", "04", 150, true, false, One);
+        t.Left(LeaveKind.ReturnToMap, 300, One);
+        t.Reentered(LeaveKind.ReturnToMap, "1a", "b-00", 0, true, false, _ => false);
+
+        Assert.Empty(t.Open);
+        Assert.Empty(t.Left(LeaveKind.ChapterEnd, 500, One));
+    }
+
+    // a death in the checkpoint's room right after the map: the game zeroes
+    // chapter time, and the chapter row keeps the 70 ticks played before it.
+    // The row that starts on that spawn starts again
+    [Fact]
+    public void ADeathThatZeroesTheClockKeepsASpanningRowAndItsTime() {
+        Add("ARB IL", "1", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom, berries: true,
+            spans: true);
+        Add("ARB Crossing-2", "6", null, endKind: EndKind.ReturnToMap, setup: StartSetup.MapSpawn);
+        rooms.Berries["ARB IL"] = ["b1"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        t.Left(LeaveKind.ChapterEnd, 400, One);
+        t.Reentered(LeaveKind.ChapterEnd, "1a", "6", 0, true, false, _ => true);
+        t.ClockZeroed("1a", "6", 70, 10, true, false, _ => true);
+        Assert.Equal(["ARB IL", "ARB Crossing-2"], t.Open.Select(r => r.Name));
+
+        t.BerryCollected("b1");
+        Assert.Equal([("ARB IL", 520L), ("ARB Crossing-2", 50L)], Of(t.Left(LeaveKind.ReturnToMap, 60, One)));
+    }
+
+    // the same death in the chapter's first room is the game's own restart:
+    // the row starts again with it, and keeps nothing
+    [Fact]
+    public void ADeathThatZeroesTheClockAtTheChaptersStartIsANewAttempt() {
+        Add("ARB IL", "1", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom, spans: true);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.ClockZeroed("1a", "1", 80, 0, true, false, _ => true);
+
+        Assert.Equal([("ARB IL", 300L)], Of(t.Left(LeaveKind.ChapterEnd, 300, One)));
     }
 }

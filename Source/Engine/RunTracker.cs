@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
@@ -34,8 +35,8 @@ internal enum LeaveKind {
     // the saved session can be resumed where it stopped
     SaveAndQuit,
     ReturnToMap,
-    // Completed turned true: the level goes on to its ending, and nothing
-    // open outlives it
+    // Completed turned true: the level goes on to its ending, and only a
+    // segment that spans leaves outlives it
     ChapterEnd,
 }
 
@@ -47,20 +48,28 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         public readonly SegmentRule Rule = rule;
         // the reading its current piece started on: a re-entry moves it
         public long Start = start;
-        // chapter time of the pieces before a Save and Quit
+        // chapter time of the pieces a leave has set aside
         public long Banked;
         public Collectibles Collected;
         public int Gems;
         public readonly HashSet<string> Berries = [];
         public bool Disqualified;
+        // one of its pieces reached the chapter's end. The segment's own: the
+        // session of a level entered from the map knows nothing of it
+        public bool Completed;
+        // the rooms a segment that spans leaves has walked into
+        public readonly HashSet<string> Entered = [];
+        // what it lacked (Lacks) when its current piece started from the map;
+        // null for a piece that started with the chapter
+        public int? Lacked;
         // the dashes at the first checkpoint crossed: what a whole chapter's
         // dash rule reads, since by Farewell's end both routes carry the same
         public int? FirstDashes;
     }
 
     private readonly List<OpenSegment> open = [];
-    // set aside by a Save and Quit, each with all it holds, until the level
-    // is entered again or a new attempt forgets them
+    // set aside by a leave (Left says which), each with all it holds, until
+    // the level is entered again or a new attempt forgets them
     private readonly List<OpenSegment> aside = [];
     // starts reached without control, waiting for it to come back in
     // pendingRoom. FromLoad: a savestate loaded without control, whose start
@@ -130,8 +139,10 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     public List<SegmentRecord> RoomEntered(string scope, string from, string room, long reading, bool control,
         bool launching, EndState end) {
         bool entry = IsEntry(scope, from, room);
-        if (entry) {
-            foreach (OpenSegment segment in open) {
+        foreach (OpenSegment segment in open) {
+            segment.Entered.Add(room);
+
+            if (entry) {
                 segment.FirstDashes ??= end.Dashes;
             }
         }
@@ -245,36 +256,53 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
                        || (segment.Rule.End == EndKind.NextStart && Rooms.EndRoomOf(segment.Rule) == null),
             counted, end);
 
-    /// The level was left, on this reading. Starts waiting for control are
-    /// forgotten. A chapter's end closes what chapter time stopping closes,
-    /// a Return to Map the segments that end on one. A Save and Quit then
-    /// sets every open segment aside with its time so far, for Reentered;
-    /// any other leave drops what is still open, unrecorded. What is
-    /// already set aside stays, with no time added.
+    /// The level was left, on this reading. A Save and Quit sets every open
+    /// segment aside, for Reentered. Any other leave sets aside the segments
+    /// that span leaves, unless they end on it with all they require, and
+    /// drops a piece from the map that fetched nothing its row lacked (a try,
+    /// at a Return to Map or at the end of a row already completed). It then
+    /// closes what ends there and drops the rest, unrecorded.
     public List<SegmentRecord> Left(LeaveKind kind, long reading, EndState end) {
         pending.Clear();
         pendingRoom = null;
-        List<SegmentRecord> records = kind switch {
-            LeaveKind.ChapterEnd => ChapterTimeStopped(reading, end),
+        if (kind == LeaveKind.ReturnToMap) {
             // the game loses a berry still following with the level
-            LeaveKind.ReturnToMap => CloseWhere(segment => segment.Rule.End == EndKind.ReturnToMap, reading,
-                end with { FollowingBerries = [] }),
-            _ => [],
-        };
-        if (kind == LeaveKind.SaveAndQuit) {
-            foreach (OpenSegment segment in open) {
-                segment.Banked += reading - segment.Start;
-                aside.Add(segment);
+            end = end with { FollowingBerries = [] };
+        }
+
+        for (int i = 0; i < open.Count;) {
+            OpenSegment segment = open[i];
+            bool completedBefore = segment.Completed;
+            segment.Completed |= kind == LeaveKind.ChapterEnd;
+            if (kind == LeaveKind.SaveAndQuit
+                || (segment.Rule.SpansLeaves && !(segment.Completed && Met(segment, reading, end) != null))) {
+                open.RemoveAt(i);
+                bool atTheEndOfACompletedRow = kind == LeaveKind.ChapterEnd && completedBefore;
+                bool aTry = kind == LeaveKind.ReturnToMap || atTheEndOfACompletedRow;
+                if (!aTry || segment.Lacked != Lacks(segment)) {
+                    segment.Banked += reading - segment.Start;
+                    aside.Add(segment);
+                }
+            } else {
+                i++;
             }
         }
 
+        List<SegmentRecord> records = kind switch {
+            LeaveKind.ChapterEnd => ChapterTimeStopped(reading, end),
+            LeaveKind.ReturnToMap => CloseWhere(
+                segment => segment.Rule.End == EndKind.ReturnToMap || segment.Rule.SpansLeaves, reading, end),
+            _ => [],
+        };
         open.Clear();
         return records;
     }
 
     /// The level that was left is entered again; RunWatcher says which level
     /// from the loader is one, and which leave it answers. What was set aside
-    /// carries on from this reading; nothing opened since the leave does.
+    /// carries on from this reading, from the map only into a room it has
+    /// walked into: a checkpoint picked further on would skip what lies
+    /// between. Nothing opened since the leave carries on.
     /// Then the Current Room and map-spawn segments starting in this room
     /// open where atStart says the player is at their start, as on a
     /// Restart, and after a Save and Quit the Heart Respawn ones too. One
@@ -285,6 +313,14 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         pending.Clear();
         pendingRoom = null;
         foreach (OpenSegment segment in aside) {
+            if (kind != LeaveKind.SaveAndQuit) {
+                if (!segment.Entered.Contains(room)) {
+                    continue;
+                }
+
+                segment.Lacked = Lacks(segment);
+            }
+
             segment.Start = reading;
             open.Add(segment);
         }
@@ -294,6 +330,23 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             rule => rule.Setup != StartSetup.NextRoom
                     && (kind == LeaveKind.SaveAndQuit || rule.Setup != StartSetup.HeartRespawn) && atStart(rule),
             fromLoad: false);
+    }
+
+    /// A death zeroed chapter time (Level.Reload, in a level's first room
+    /// with nothing collected): a new attempt from the spawn, as Restart,
+    /// for everything but a segment that spans leaves in a piece started
+    /// from the map. It keeps the time read before the reset, `last`, and
+    /// carries on from the new reading.
+    public void ClockZeroed(string scope, string room, long last, long reading, bool control, bool launching,
+        Func<SegmentRule, bool> atStart) {
+        List<OpenSegment> kept = open.FindAll(segment => segment.Rule.SpansLeaves && segment.Lacked != null);
+        foreach (OpenSegment segment in kept) {
+            segment.Banked += last - segment.Start;
+            segment.Start = reading;
+        }
+
+        Restart(scope, room, reading, control, launching, atStart);
+        open.InsertRange(0, kept);
     }
 
     /// Restart Chapter left the level, with the old session's last reading: the
@@ -380,6 +433,20 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         }
 
         return elapsed + rule.HeadTicks + rule.TailTicks;
+    }
+
+    // how many of the things the rule requires the segment does not hold: a
+    // berry not banked (one still following is not), a heart or a cassette,
+    // each gem short
+    private int Lacks(OpenSegment segment) {
+        SegmentRule rule = segment.Rule;
+        int lacks = BitOperations.PopCount((uint)(rule.Requires & ~segment.Collected))
+                    + Math.Max(0, rule.Gems - segment.Gems);
+        if (Rooms.BerriesOf(rule) is { } berries) {
+            lacks += berries.Count(berry => !segment.Berries.Contains(berry));
+        }
+
+        return lacks;
     }
 
     // a berry still following at the end counts. No berries resolved is not

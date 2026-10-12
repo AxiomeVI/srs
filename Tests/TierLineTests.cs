@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace Celeste.Mod.SpeedrunSheet.Tests;
@@ -62,6 +63,18 @@ public class TierLineTests {
     [Fact]
     public void NoSheetTimeNoPB() {
         Assert.Null(Build(47).Pb);
+    }
+
+    // the sheet grades 1A's two chapter rows in file time, which srs does
+    // not measure: they show their time and no tier, and no other row does
+    [Fact]
+    public void ARowSrsCannotRankShowsItsTimeAlone() {
+        TierRows rows = TierLine.Build(Columns, Thresholds, T(47), T(48), ranked: false);
+
+        Assert.Equal(("", (string)null), (rows.Tier, rows.Gap));
+        Assert.NotNull(rows.Pb);
+        Assert.Equal(["1a/ARB IL", "1a/FC IL"],
+            SegmentRules.All.Where(rule => !TierLine.Ranks(rule)).Select(rule => $"{rule.Scope}/{rule.Name}"));
     }
 
     [Theory]

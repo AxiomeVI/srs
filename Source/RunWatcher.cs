@@ -99,6 +99,12 @@ public static class RunWatcher {
     // go when the run that follows closes its first
     private static int keptSerial;
 
+    // the last level updated was 7A's credits, or the Epilogue they end in.
+    // The game counts no time in either (Level.UpdateTime), so neither is an
+    // attempt: the leave pending from the chapter's end is judged by the
+    // level entered after them. Never saved: a state load clears the leave
+    private static bool afterEnding;
+
     // the frame being fed: a collect inside it is timed from its start, as
     // a room entry is (Session.Time already counts the frame by then)
     private static bool inUpdate;
@@ -112,7 +118,8 @@ public static class RunWatcher {
     /// first, the most specific segment of each frame then the most specific
     /// chapter run, each with its serial; empty after a load, and after a
     /// level from the loader unless it is a re-entry after a Return to Map
-    /// or a chapter's end, which keeps what closed at that leave. The HUD's
+    /// or a chapter's end, which keeps what closed at that leave. 7A's credits
+    /// and the Epilogue after them leave it untouched. The HUD's
     /// tier rows show the last and step back from it.
     internal static IReadOnlyList<(SegmentRecord Record, int Serial)> Attempt => attempt;
     private static readonly List<(SegmentRecord Record, int Serial)> attempt = [];
@@ -246,6 +253,7 @@ public static class RunWatcher {
             roomLoad = RoomLoad.None;
             chapterRestarted = false;
             leave = null;
+            afterEnding = false;
             Saved.Moved = true;
             if (self.Tracker.GetEntity<Player>()?.StateMachine.State != Player.StReflectionFall) {
                 Saved.From = self.Session.Level;
@@ -293,6 +301,10 @@ public static class RunWatcher {
         bool launching = state == Player.StIntroJump;
         bool stopped = self.TimerStopped || self.Completed;
         bool completed = self.Completed;
+        // the Epilogue counts as an ending only while the last level updated
+        // was one: afterEnding is rewritten by a level update only, so one
+        // entered again after the credits stays transparent
+        bool ending = self.InCredits || (afterEnding && session.Area.ID == 8);
         tracker.Rooms = RoomMap.For(session);
         EndState end = EndOf(session, player);
         RoomLoad load = roomLoad;
@@ -339,6 +351,11 @@ public static class RunWatcher {
             lastStopped = stoppedBefore;
             lastCompleted = completedBefore;
             feed = scope != null;
+        } else if (load == RoomLoad.Loader && ending) {
+            // the leave and what is set aside wait for the level entered after
+            // it. The rows shown do not: TierComparison dismisses them in the
+            // credits (not the room they closed in), and the serial that
+            // would bring them back has not moved
         } else if (load == RoomLoad.Loader) {
             // the spawn tested is the one the player appears at (an intro
             // starts off screen). A checkpoint entered from chapter select
@@ -388,9 +405,15 @@ public static class RunWatcher {
         } else if (after < before) {
             // Level.Reload zeroes chapter time on a death in the first room
             // with nothing collected: a new attempt from the spawn, which
-            // without control waits for ControlReturned
-            tracker.Restart(scope, room, after, control, launching,
-                AtStartSpawn(session, session.LevelData, session.RespawnPoint));
+            // without control waits for ControlReturned. Only that death
+            // lets a chapter row from the map keep the time read before it
+            Func<SegmentRule, bool> spawn = AtStartSpawn(session, session.LevelData, session.RespawnPoint);
+            if (load == RoomLoad.Respawn && room == lastRoom) {
+                tracker.ClockZeroed(scope, room, before, after, control, launching, spawn);
+            } else {
+                tracker.Restart(scope, room, after, control, launching, spawn);
+            }
+
             attempt.Clear();
             leave = null;
             restarted = true;
@@ -398,7 +421,8 @@ public static class RunWatcher {
             feed = scope != null;
         }
 
-        if (feed) {
+        // the credits set Completed again and change room: neither is the run's
+        if (feed && !ending) {
             if (state == Player.StReflectionFall && lastState != Player.StReflectionFall) {
                 // 6A's watched fall is not a run of 6a Start: disqualified, not
                 // dropped, so it still closes in Lake's start room and Lake
@@ -466,6 +490,7 @@ public static class RunWatcher {
         lastControl = control;
         lastStopped = stopped;
         lastCompleted = completed;
+        afterEnding = ending;
         chapterRestarted = false;
         fedLastFrame = true;
     }
@@ -557,9 +582,10 @@ public static class RunWatcher {
     // holding that frame's tick; gated like a collect. An exit built with no
     // level as the scene (the debug keys) is none of srs's; Restart and the
     // golden restart are seen at Session.Restart; a chapter's end was fed
-    // when Completed turned true
+    // when Completed turned true; an exit from the Epilogue 7A's credits end
+    // in would replace the leave still pending from 7A's end
     private static void OnLevelExit(Level level, LevelExit exit, LevelExit.Mode mode, Session session, HiresSnow snow) {
-        if (level == null || mode is not (LevelExit.Mode.SaveAndQuit or LevelExit.Mode.GiveUp)
+        if (level == null || mode is not (LevelExit.Mode.SaveAndQuit or LevelExit.Mode.GiveUp) || afterEnding
             || !SrsModule.Settings.Enabled || saveLoadAction == null || !fedLastFrame || Saved.Stamp != stamp) {
             return;
         }

@@ -130,7 +130,8 @@ public static class TierComparison {
             return;
         }
 
-        TierRows built = TierLine.Build(block.Columns, segment.Times, record.Ticks, sheetTimes[shownSerial].Ticks);
+        TierRows built = TierLine.Build(block.Columns, segment.Times, record.Ticks, sheetTimes[shownSerial].Ticks,
+            TierLine.Ranks(record.Rule));
         rows = built;
         segmentName = TierLine.NameOf(record.Rule.Scope, record.Rule.Name);
         place = attempt.Count > 1 ? $"{attempt.Count - stepsBack}/{attempt.Count}" : "";

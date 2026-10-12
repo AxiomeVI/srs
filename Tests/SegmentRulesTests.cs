@@ -48,13 +48,14 @@ public class SegmentRulesTests {
         "Farewell/Start DTS",
         "Farewell/DTS IL",
         "Farewell/No DTS IL",
-        "1a/ARB Start to RTM", "1a/ARB Start to Heart", "1a/ARB Start",
+        "1a/ARB Start to RTM", "1a/ARB Start to Heart", "1a/ARB Start", "1a/ARB IL",
         "2a/ARB Start", "2a/ARB Awake", "2a/ARB IL",
         "3a/ARB Start", "3a/ARB IL",
         "4a/ARB Start", "4a/ARB IL",
-        "5a/ARB Start", "5a/ARB Unravelling",
+        "5a/ARB Start", "5a/ARB Unravelling", "5a/ARB IL",
         "7a/ARB Start", "7a/ARB IL",
         "8a/ARB IL",
+        "1a/FC IL", "5a/FC IL", "6a/FC IL",
     ];
 
     // a row given ChapterEnd by mistake would stay open across its checkpoints
@@ -69,8 +70,9 @@ public class SegmentRulesTests {
                 "1b/IL", "2b/IL", "3b/IL", "4b/IL", "5b/IL", "6b/IL", "7b/IL", "8b/IL",
                 "1c/1c", "2c/2c", "3c/3c", "4c/4c", "5c/5c", "6c/6c", "7c/7c", "8c/8c",
                 "Farewell/DTS IL", "Farewell/No DTS IL",
-                "2a/ARB IL", "3a/ARB IL", "4a/ARB IL", "7a/ARB IL", "8a/ARB IL",
-                "2a/FC IL", "3a/FC IL", "4a/FC IL", "7a/FC IL", "8a/FC IL", "Farewell/FC DTS IL", "Farewell/FC No DTS IL",
+                "1a/ARB IL", "2a/ARB IL", "3a/ARB IL", "4a/ARB IL", "5a/ARB IL", "7a/ARB IL", "8a/ARB IL",
+                "1a/FC IL", "2a/FC IL", "3a/FC IL", "4a/FC IL", "5a/FC IL", "6a/FC IL", "7a/FC IL", "8a/FC IL",
+                "Farewell/FC DTS IL", "Farewell/FC No DTS IL",
             ],
             SegmentRules.All.Where(r => r.End == EndKind.ChapterEnd).Select(r => $"{r.Scope}/{r.Name}"));
     }
@@ -129,9 +131,9 @@ public class SegmentRulesTests {
             bool berryTab = r.Name.StartsWith("ARB ") || (r.Name.StartsWith("FC ") && r.Scope != "6a");
             Assert.Equal(berryTab, r.RequiresBerries);
         });
-        Assert.Equal(48, SegmentRules.All.Count(r => r.Name.StartsWith("ARB ")));
-        Assert.Equal(23, SegmentRules.All.Count(r => r.Name.StartsWith("FC ") && r.RequiresBerries));
-        Assert.Equal(12, SegmentRules.All.Count(r => r.RequiresBerries && r.ChapterRun));
+        Assert.Equal(50, SegmentRules.All.Count(r => r.Name.StartsWith("ARB ")));
+        Assert.Equal(25, SegmentRules.All.Count(r => r.Name.StartsWith("FC ") && r.RequiresBerries));
+        Assert.Equal(16, SegmentRules.All.Count(r => r.RequiresBerries && r.ChapterRun));
     }
 
     [Fact]
@@ -148,7 +150,7 @@ public class SegmentRulesTests {
     public void TheBerryRowsThatNeedTheHeart() {
         Assert.Equal(
             ["1a/ARB Crossing to Heart", "1a/ARB Crossing to RTM", "1a/ARB Start to Heart", "1a/ARB Crossing",
-             "3a/ARB Huge Mess", "4a/ARB Shrine", "3a/ARB IL", "4a/ARB IL"],
+             "3a/ARB Huge Mess", "4a/ARB Shrine", "1a/ARB IL", "3a/ARB IL", "4a/ARB IL"],
             SegmentRules.All.Where(r => r.Name.StartsWith("ARB ") && r.Requires == Collectibles.Heart)
                 .Select(r => $"{r.Scope}/{r.Name}"));
         Assert.All(SegmentRules.All.Where(r => r.Name.StartsWith("ARB ")),
@@ -196,6 +198,7 @@ public class SegmentRulesTests {
 
     // a Full Clear label says nothing of what the row collects: the whole table, as the owner gave it
     [Theory]
+    [InlineData("1a", "FC IL", (int)(Collectibles.Heart | Collectibles.Cassette), 0)]
     [InlineData("2a", "FC Start", (int)(Collectibles.Cassette), 0)]
     [InlineData("2a", "FC IL", (int)(Collectibles.Cassette), 0)]
     [InlineData("3a", "FC Elevator Shaft", (int)(Collectibles.Cassette), 0)]
@@ -203,7 +206,9 @@ public class SegmentRulesTests {
     [InlineData("4a", "FC Start", (int)(Collectibles.Cassette), 0)]
     [InlineData("4a", "FC IL", (int)(Collectibles.Heart | Collectibles.Cassette), 0)]
     [InlineData("5a", "FC Depths", (int)(Collectibles.Heart | Collectibles.Cassette), 0)]
+    [InlineData("5a", "FC IL", (int)(Collectibles.Heart | Collectibles.Cassette), 0)]
     [InlineData("6a", "FC Hollows (from RTM)", (int)(Collectibles.None), 0)]
+    [InlineData("6a", "FC IL", (int)(Collectibles.Heart | Collectibles.Cassette), 0)]
     [InlineData("7a", "FC Start", (int)(Collectibles.Gem), 1)]
     [InlineData("7a", "FC 500m", (int)(Collectibles.Gem), 1)]
     [InlineData("7a", "FC 1000m", (int)(Collectibles.Gem), 1)]
@@ -257,7 +262,7 @@ public class SegmentRulesTests {
                 Assert.Equal((arb.Berries, arb.Anchor, arb.Setup, arb.End == EndKind.Collect ? fc.End : arb.End),
                     (fc.Berries, fc.Anchor, fc.Setup, fc.End));
             } else {
-                Assert.Contains($"{fc.Scope}/{fc.Name}", new[] { "6a/FC Hollows (from RTM)" });
+                Assert.Contains($"{fc.Scope}/{fc.Name}", new[] { "6a/FC Hollows (from RTM)", "6a/FC IL" });
             }
         }
     }
@@ -450,6 +455,18 @@ public class SegmentRulesTests {
         Assert.Equal((StartSetup.CurrentRoom, EndKind.ChapterEnd, Collectibles.None),
             (rule.Setup, rule.End, rule.Requires));
         Assert.True(rule.Berries.Chapter);
+    }
+
+    // the chapter rows whose route returns to the map. RunTracker.Left ends
+    // them like any whole chapter, so each must be one: timed from the
+    // chapter's start to its end, with no dash rule
+    [Fact]
+    public void TheChapterRowsThatSpanAReturnToMap() {
+        Assert.Equal(
+            ["1a/ARB IL", "4a/ARB IL", "5a/ARB IL", "7a/ARB IL", "1a/FC IL", "4a/FC IL", "5a/FC IL", "6a/FC IL"],
+            SegmentRules.All.Where(r => r.SpansLeaves).Select(r => $"{r.Scope}/{r.Name}"));
+        Assert.All(SegmentRules.All.Where(r => r.SpansLeaves), r =>
+            Assert.Equal((true, EndKind.ChapterEnd, "Start", (int?)null), (r.ChapterRun, r.End, r.Anchor, r.Dashes)));
     }
 
     // no emoji in the label says so

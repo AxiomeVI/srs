@@ -209,8 +209,7 @@ internal static class SheetRows {
         new(F, "Farewell", "No DTS IL", "Farewell", "No DTS IL", "Start", new(SheetLabels.TabFarewell, "", "No DTS")),
         // the berry tab: a row is its A-side row plus red berries, named
         // "ARB ..." under the A-side chapter. What a label does not say is in
-        // RowTraits, a route that ends on a Return to Map included. The
-        // chapter rows whose route returns to the map are left out
+        // RowTraits, a route that ends on a Return to Map included
         new(R, "1a " + Berry, "Start to RTM", "1a", "ARB Start to RTM", "Start"),
         new(R, "1a " + Berry, "Crossing to Heart", "1a", "ARB Crossing to Heart", "Crossing"),
         new(R, "1a " + Berry, "Crossing to RTM", "1a", "ARB Crossing to RTM", "Crossing"),
@@ -257,9 +256,11 @@ internal static class SheetRows {
         new(R, "8a " + Berry, "HotM Vertical", "8a", "ARB HotM Vertical", "Heart of the Mountain"),
         // the tab's second block has no Checkpoint column: a chapter's row is
         // named by its chapter cell, and is the whole chapter with every berry
+        new(R, "1a " + Berry, "1a " + Berry, "1a", "ARB IL", "Start"),
         new(R, "2a " + Berry, "2a " + Berry, "2a", "ARB IL", "Start"),
         new(R, "3a " + Berry, "3a " + Berry, "3a", "ARB IL", "Start"),
         new(R, "4a " + Berry, "4a " + Berry, "4a", "ARB IL", "Start"),
+        new(R, "5a " + Berry, "5a " + Berry, "5a", "ARB IL", "Start"),
         new(R, "7a " + Berry, "7a " + Berry, "7a", "ARB IL", "Start"),
         new(R, "8a " + Berry, "8a " + Berry, "8a", "ARB IL", "Start"),
         // Full Clear: the checkpoints where its route differs from the berry one
@@ -281,9 +282,12 @@ internal static class SheetRows {
         new(X, "7afc", "Downdraft", "7a", "FC Downdraft", "Downdraft"),
         new(X, "Fw FC", "Moon Berry", "Farewell", "FC Moon Berry", "Farewell"),
         // the second block, as the berry tab's: a whole chapter with everything
+        new(X, "1afc", "1afc", "1a", "FC IL", "Start"),
         new(X, "2afc", "2afc", "2a", "FC IL", "Start"),
         new(X, "3afc", "3afc", "3a", "FC IL", "Start"),
         new(X, "4afc", "4afc", "4a", "FC IL", "Start"),
+        new(X, "5afc", "5afc", "5a", "FC IL", "Start"),
+        new(X, "6afc", "6afc", "6a", "FC IL", "Start"),
         new(X, "7afc", "7afc", "7a", "FC IL", "Start"),
         new(X, "8afc", "8afc", "8a", "FC IL", "Start"),
         new(X, "Fw FC DTS", "Fw FC DTS", "Farewell", "FC DTS IL", "Start", new(SheetLabels.TabArbFullClear, "Fw FC", "DTS")),

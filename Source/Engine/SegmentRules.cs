@@ -62,6 +62,7 @@ internal static class SegmentRules {
                 SegmentAutoDetect.UntimedSegmentTail.GetValueOrDefault(anchor).Ticks,
                 i) {
                 ChapterRun = chapterRun, Berries = berries, EntryRoom = traits.EntryRoom,
+                SpansLeaves = traits.SpansLeaves,
                 Gems = (marked & Collectibles.Gem) == Collectibles.None ? 0 : chapterRun ? ChapterGems : 1,
             });
         }

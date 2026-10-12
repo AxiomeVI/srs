@@ -110,4 +110,87 @@ public class BerrySetsTests {
 
         Assert.Equal(ForsakenCity.Select(berry => berry.Key).Order().ToList(), taken);
     }
+
+    // the chapter rows start in the first room, and nothing else of the
+    // room map matters to them
+    private sealed class ChapterRooms : IRoomMap {
+        public string StartRoomOf(SegmentRule rule) => rule.Anchor == "Start" ? "1" : null;
+        public string EndRoomOf(SegmentRule rule) => null;
+        public string EntryRoomOf(SegmentRule rule) => null;
+        public IReadOnlyCollection<string> BerriesOf(SegmentRule rule) =>
+            rule.Berries == null ? null : BerrySets.Resolve(rule.Berries, ForsakenCity, CheckpointOf);
+    }
+
+    // the sheet's twelve routes through 1A, on the real rules. Each piece
+    // takes its row's berries and its heart, and lasts 100 ticks. It walks
+    // into Crossing's room when it starts at the chapter's start, and into
+    // Chasm's when it plays Crossing to its end. A piece ends as its row
+    // does: on a Return to Map, with the chapter (Chasm), on the Save and
+    // Quit after the heart, or by walking on. The next one then starts on its
+    // own checkpoint, its clock at zero after the map. The cassette is taken
+    // on the way to room 11's berry. Both chapter rows end once, when the
+    // last piece does
+    [Theory]
+    [InlineData("Start|Crossing|Chasm|Crossing-2|Chasm-2")]
+    [InlineData("Start|Crossing|Chasm-2|Crossing-2|Chasm")]
+    [InlineData("Start|Crossing to RTM|Chasm|Crossing-2")]
+    [InlineData("Start|Crossing to RTM|Crossing-2|Chasm")]
+    [InlineData("Start|Crossing to Heart|Heart to RTM|Chasm|Crossing-2")]
+    [InlineData("Start|Crossing to Heart|Heart to RTM|Crossing-2|Chasm")]
+    [InlineData("Start to Heart|Heart to RTM|Chasm|Crossing-2")]
+    [InlineData("Start to Heart|Heart to RTM|Crossing-2|Chasm")]
+    [InlineData("Start to RTM|Crossing to Heart|Heart to RTM|Chasm")]
+    [InlineData("Start to RTM|Crossing|Chasm|Chasm-2")]
+    [InlineData("Start to RTM|Crossing|Chasm-2|Chasm")]
+    [InlineData("Start to RTM|Crossing to RTM|Chasm")]
+    public void TheChapterRowsEndOnceWithTheLastPieceOfEveryRouteThroughForsakenCity(string route) {
+        ChapterRooms rooms = new();
+        RunTracker tracker = new(SegmentRules.All.Where(rule => rule.Scope == "1a").ToList(), rooms);
+        EndState end = new(1, []);
+        SegmentRule[] pieces = [.. route.Split('|').Select(name => TestRules.Find("1a", "ARB " + name))];
+        List<(string Name, long Ticks, int Piece)> closed = [];
+
+        tracker.Restart("1a", "1", 0, true, false, _ => true);
+        long clock = 0;
+        for (int i = 0; i < pieces.Length; i++) {
+            SegmentRule piece = pieces[i];
+            if (piece.Anchor == "Start") {
+                tracker.RoomEntered("1a", "5", "6", clock, true, false, end);
+            } else if (piece.Name is "ARB Crossing" or "ARB Crossing to RTM" or "ARB Heart to RTM") {
+                tracker.RoomEntered("1a", "9", "9b", clock, true, false, end);
+            }
+
+            foreach (string berry in rooms.BerriesOf(piece)) {
+                tracker.BerryCollected(berry);
+                if (berry == "11:9") {
+                    tracker.Collected(Collectibles.Cassette, clock, end);
+                }
+            }
+
+            if ((piece.Requires & Collectibles.Heart) != 0) {
+                tracker.Collected(Collectibles.Heart, clock, end);
+            }
+
+            clock += 100;
+            LeaveKind? leave = piece.End == EndKind.ReturnToMap ? LeaveKind.ReturnToMap
+                : piece.Name == "ARB Chasm" ? LeaveKind.ChapterEnd
+                : piece.End == EndKind.Collect ? LeaveKind.SaveAndQuit
+                : null;
+            if (leave is not { } kind) {
+                continue;
+            }
+
+            closed.AddRange(tracker.Left(kind, clock, end)
+                .Where(record => record.Rule.SpansLeaves).Select(record => (record.Rule.Name, record.Ticks, i)));
+            if (i + 1 < pieces.Length) {
+                clock = kind == LeaveKind.SaveAndQuit ? clock : 0;
+                tracker.Reentered(kind, "1a",
+                    pieces[i + 1].Anchor switch { "Crossing" => "6", "Chasm" => "9b", _ => "s1" },
+                    clock, true, false, _ => false);
+            }
+        }
+
+        long whole = 100 * pieces.Length;
+        Assert.Equal([("ARB IL", whole, pieces.Length - 1), ("FC IL", whole, pieces.Length - 1)], closed);
+    }
 }
