@@ -73,9 +73,13 @@ internal static class ExportSend {
         try {
             (List<ExportResult> results, int? ms, string error, bool stopped) = task.Result;
             outcome = new SendOutcome(sent, results, error, stopped);
-            foreach (ExportResult r in results) {
+            for (int i = 0; i < results.Count; i++) {
+                ExportResult r = results[i];
+                // the script answers its updates in order: what was sent for the row, so the log says it
+                ExportUpdate u = i < sent.Count ? sent[i] : null;
                 sender.Info($"  {ExportTable.RowLabel(r.Tab, r.Chapter, r.Cp)}: {r.Status}"
                     + (string.IsNullOrEmpty(r.Band) ? "" : $" [{r.Band}]")
+                    + (u == null ? "" : $" {u.Time.Trim()}" + (u.Timing == null ? "" : $", timing {u.Timing}"))
                     + (string.IsNullOrEmpty(r.Reason) ? "" : $" ({r.Reason})"));
             }
 
