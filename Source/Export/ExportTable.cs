@@ -118,16 +118,22 @@ internal static class ExportTable {
     }
 
     // the summary has one selectable item, its Close button, so it cannot
-    // scroll: lines past the screen's height would never show
-    internal const int MaxOtherRows = 10;
+    // scroll, and past 930 px its title leaves the screen. Measured in game:
+    // both lists full, every other row and a failure line stay under it
+    internal const int MaxOtherRows = 6;
+    internal const int MaxNamedRows = 10;
 
     /// One line for the rows written, one for those already on the sheet, whose
     /// reasons only go to the log, and one per other row with the script's
     /// reason, untranslated: srs does not author it.
     public static List<string> SummaryLines(IReadOnlyList<ExportResult> results) {
         List<string> lines = [];
-        string Labels(string status) => string.Join(", ", results.Where(r => r.Status == status)
-            .Select(r => RowLabel(r.Tab, r.Chapter, r.Cp)));
+        string Labels(string status) {
+            List<string> labels = results.Where(r => r.Status == status)
+                .Select(r => RowLabel(r.Tab, r.Chapter, r.Cp)).ToList();
+            return string.Join(", ", labels.Take(MaxNamedRows))
+                + (labels.Count > MaxNamedRows ? $", +{labels.Count - MaxNamedRows}" : "");
+        }
 
         if (results.Any(r => r.Status == "written")) {
             lines.Add($"{L("SRS_EXPORT_SUMMARY_WRITTEN")} {Labels("written")}");

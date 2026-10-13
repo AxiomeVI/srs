@@ -120,6 +120,15 @@ public class ExportTableTests {
     }
 
     [Fact]
+    public void TheSummaryNamesTheFirstRowsWrittenAndCountsTheRest() {
+        List<ExportResult> written = Enumerable.Range(0, ExportTable.MaxNamedRows + 5)
+            .Select(i => new ExportResult { Tab = "A Sides", Chapter = "2a", Cp = "Row " + i, Status = "written" }).ToList();
+
+        string line = Assert.Single(ExportTable.SummaryLines(written));
+        Assert.EndsWith($"2a Row {ExportTable.MaxNamedRows - 1}, +5", line);
+    }
+
+    [Fact]
     public void AnEmptyAnswerStillSaysTheExportIsDone() {
         Assert.Equal(["SRS_EXPORT_DONE"], ExportTable.SummaryLines([]));
     }
