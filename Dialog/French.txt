@@ -1,7 +1,10 @@
 # srs: Speedrun Sheet
 
 # Mod Options
+# the released mod reads this key too, and the files loaded last win: its title stays its own
 MODOPTIONS_SRS_TITLE=     Speedrun Sheet
+MODOPTIONS_SRS_BETA_TITLE= Speedrun Sheet Beta
+MODOPTIONS_SRS_BETA_BLOCKED= Non démarré : Speedrun Sheet est aussi installé. Le retirer de Mods pour utiliser la bêta.
 MODOPTIONS_SRS_ENABLED=   Activé
 MODOPTIONS_SRS_SHOWTIER=  Afficher le palier
 MODOPTIONS_SRS_PREVIOUSSEGMENT= Faire défiler le segment affiché

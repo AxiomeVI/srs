@@ -1,5 +1,7 @@
 # Speedrun Sheet (srs)
 
+> **This is the beta, installed as Speedrun Sheet Beta.** Remove Speedrun Sheet from `Mods` first: the two cannot run together, and the beta does not start while the other is there. Its settings start fresh; your sheet URL and the standards are kept.
+
 [Everest](https://everestapi.github.io/) mod for Celeste that requires [Speedrun Tool](https://gamebanana.com/tools/6597). It imports a community practice sheet's reference times, compares your time on a checkpoint with them, and shows the tier you reached in its color. It detects the segment you run on its own: there is nothing to pick.
 
 Options under **Mod Options → Speedrun Sheet**. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).

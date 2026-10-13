@@ -1,5 +1,5 @@
-- Name: Speedrun Sheet
-  Version: 3.7.0
+- Name: Speedrun Sheet Beta
+  Version: 4.0.0-beta.1
   DLL: bin/srs.dll
   Dependencies:
     - Name: Everest
@@ -7,5 +7,8 @@
     - Name: SpeedrunTool
       Version: 3.27.17
   OptionalDependencies:
+    # the released mod: loaded first when it is there, so that this one sees it and stands down
+    - Name: Speedrun Sheet
+      Version: 3.0.0
     - Name: SomeSplitButtons
       Version: 1.4.1

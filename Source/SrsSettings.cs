@@ -1,5 +1,7 @@
 namespace Celeste.Mod.SpeedrunSheet;
 
+// its own key: the released mod shares every other one, and would show this title
+[SettingName("MODOPTIONS_SRS_BETA_TITLE")]
 public class SrsSettings : EverestModuleSettings {
     // master switch: off, the mod is inert and Mod Options shows only this
     // toggle. Built by hand in ModMenu, whose Change handler folds the rest

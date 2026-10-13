@@ -17,7 +17,20 @@ public class SrsModule : EverestModule {
         Instance = this;
     }
 
+    // the released mod, which this beta replaces. Both would hook the same
+    // frames and write the same files: with it loaded, the beta starts nothing
+    private const string ReleasedName = "Speedrun Sheet";
+    private static bool standingDown;
+
     public override void Load() {
+        // everest.yaml loads the released mod first when it is installed
+        standingDown = Everest.Modules.Any(module => module.Metadata?.Name == ReleasedName);
+        if (standingDown) {
+            Logger.Log(LogLevel.Error, "srs",
+                $"{Metadata.Name} is not started: {ReleasedName} is installed too. Remove it from Mods to use the beta.");
+            return;
+        }
+
         // before anything formats a time
         AdoptSpeedrunToolsTimeFormat();
 
@@ -61,6 +74,10 @@ public class SrsModule : EverestModule {
     }
 
     public override void Unload() {
+        if (standingDown) {
+            return;
+        }
+
         // a reloaded module leaves these statics behind: nothing of theirs may send
         AutoExport.Drop();
         ExportMenu.Unload();
@@ -101,6 +118,9 @@ public class SrsModule : EverestModule {
 
     public override void LoadSettings() {
         base.LoadSettings();
+        if (standingDown) {
+            return;
+        }
 
         // see SheetUrls
         MigrateSheetUrls();
@@ -145,6 +165,15 @@ public class SrsModule : EverestModule {
     // added before it land in the previous mod's section
     public override void CreateModMenuSection(TextMenu menu, bool inGame, EventInstance snapshot) {
         CreateModMenuSectionHeader(menu, inGame, snapshot);
+        if (standingDown) {
+            // one sentence a line: a SubHeader never wraps
+            menu.Add(new TextMenuExt.SubHeaderExt(Dialog.Clean("MODOPTIONS_SRS_BETA_BLOCKED").Replace(". ", ".\n")) {
+                TextColor = ExportUrlMenu.ErrorColor,
+                HeightExtra = 0f,
+            });
+            return;
+        }
+
         ModMenu.CreateMenu(menu, inGame);
     }
 }
