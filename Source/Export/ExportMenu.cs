@@ -511,8 +511,9 @@ internal static class ExportMenu {
     }
 
     private static (string One, string Two) StatusLines() {
-        string error = RemoteBests.Error ?? Dialog.Clean("SRS_EXPORT_UNREAD");
-        string noAnswer = $"{Dialog.Clean("SRS_EXPORT_NO_ANSWER")} {error}";
+        // the error is a sentence of its own: a prefix saying the sheet did
+        // not answer was false for a script out of date or an error 500
+        string noAnswer = RemoteBests.Error ?? Dialog.Clean("SRS_EXPORT_UNREAD");
         string checking = Dialog.Clean("SRS_EXPORT_CHECKING");
         string mayBeWriting = Dialog.Clean("SRS_EXPORT_MAY_BE_WRITING");
         return ExportTable.StatusOf(RemoteBests.Source, SheetReader.IsReading, RemoteBests.Error,

@@ -36,7 +36,8 @@ internal static class ModMenu {
         Action updateStandards = SheetImporter.CreateMenuEntries(section);
 
         // the player's own sheet. The URL entries come last, Forget closing the group
-        RecursiveSubMenu sheet = new(Dialog.Clean("MODOPTIONS_SRS_GROUP_YOURSHEET"));
+        RecursiveSubMenu sheet = new(Dialog.Clean("MODOPTIONS_SRS_GROUP_YOURSHEET"),
+            preview: new ExportUrlMenu.TroubleMark());
 
         // in game only: the export screen needs a level, and it saves binding a
         // hotkey just to reach it

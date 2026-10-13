@@ -24,6 +24,22 @@ public static class ExportUrlMenu {
 
     internal static readonly Color ErrorColor = Calc.HexToColor("FF4040");
 
+    /// On the closed Your Sheet row while something in it stops an export: an
+    /// out-of-date script, or a last read that failed. The lines that say
+    /// which are inside the group.
+    internal sealed class TroubleMark : ISubMenuPreview {
+        private const string Mark = "!";
+
+        public float Width() => ActiveFont.Measure(Mark).X;
+
+        public void Render(Vector2 position, Color color, float alpha) {
+            if (ExportTarget.IsSet && (SheetReader.OutOfDateError != null || RemoteBests.Error != null)) {
+                ActiveFont.DrawOutline(Mark, position, new Vector2(0f, 0.5f), Vector2.One, ErrorColor * alpha, 2f,
+                    Color.Black * (alpha * alpha * alpha));
+            }
+        }
+    }
+
     /// Adds the URL entry, its status line and the Forget button, which stays
     /// hidden while no URL is set.
     internal static void CreateMenuEntries(RecursiveSubMenuBase group) {
@@ -57,7 +73,7 @@ public static class ExportUrlMenu {
             if (!checking) {
                 string unread = ExportTarget.IsSet ? Localized(RemoteBests.Error) : null;
                 trouble = message ?? Localized(SheetReader.OutOfDateError)
-                    ?? (unread == null ? null : $"{Dialog.Clean("SRS_EXPORT_NO_ANSWER")}\n{unread}");
+                    ?? unread;
                 // a SubHeader never wraps, and one line this long widens the whole
                 // menu: one sentence a line
                 trouble = trouble?.Replace(". ", ".\n");
@@ -203,7 +219,7 @@ public static class ExportUrlMenu {
                 ReadOutcome outcome = task.Result;
                 message = outcome.Kind switch {
                     ReadKind.Accepted => Dialog.Clean("SRS_EXPORT_URL_CHECK_OK"),
-                    ReadKind.Unreachable => $"{Dialog.Clean("SRS_EXPORT_URL_CHECK_FAILED")} {outcome.Error}",
+                    ReadKind.Unreachable => outcome.Error,
                     ReadKind.OutOfDate => outcome.Error,
                     ReadKind.NoRows => Dialog.Clean("SRS_EXPORT_URL_CHECK_NO_ROWS"),
                     ReadKind.NotTheScript => Dialog.Clean("SRS_EXPORT_URL_CHECK_NOT_SHEET"),
