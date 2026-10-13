@@ -29,14 +29,26 @@ public static class ExportUrlMenu {
     /// which are inside the group.
     internal sealed class TroubleMark : ISubMenuPreview {
         private const string Mark = "!";
+        // the group's title draws its arrow this far after the label, and the mark follows the arrow
+        private const float Gap = 10f;
 
-        public float Width() => ActiveFont.Measure(Mark).X;
+        /// The group the mark is on: set once it exists.
+        public RecursiveSubMenu Group { private get; set; }
+
+        // drawn beside the label, where the eye is, not in the column a preview is given
+        public float Width() => 0f;
 
         public void Render(Vector2 position, Color color, float alpha) {
-            if (ExportTarget.IsSet && (SheetReader.OutOfDateError != null || RemoteBests.Error != null)) {
-                ActiveFont.DrawOutline(Mark, position, new Vector2(0f, 0.5f), Vector2.One, ErrorColor * alpha, 2f,
-                    Color.Black * (alpha * alpha * alpha));
+            if (Group?.Container == null || !ExportTarget.IsSet
+                || (SheetReader.OutOfDateError == null && RemoteBests.Error == null)) {
+                return;
             }
+
+            // position is the row's right edge: back to its left, then past the label and its arrow
+            float x = position.X - Group.Container.Width + ActiveFont.Measure(Group.Label).X
+                + GFX.Gui["downarrow"].Width + 2f * Gap;
+            ActiveFont.DrawOutline(Mark, new Vector2(x, position.Y), new Vector2(0f, 0.5f), Vector2.One,
+                ErrorColor * alpha, 2f, Color.Black * (alpha * alpha * alpha));
         }
     }
 
