@@ -18,6 +18,9 @@ public class ExportTableTests {
     [InlineData(HeldSource.Fresh, false, "offline", true, true, "Writing")]
     [InlineData(HeldSource.Saved, true, null, true, false, "WritingChecking")]
     [InlineData(HeldSource.Fresh, false, "offline", true, false, "WritingFailed")]
+    [InlineData(HeldSource.Fresh, true, "offline", true, false, "WritingChecking")]
+    // the read landed and the export is still unanswered: nothing is being checked
+    [InlineData(HeldSource.Fresh, false, null, true, false, "MayBeWriting")]
     [InlineData(HeldSource.Saved, true, null, false, false, "SavedChecking")]
     [InlineData(HeldSource.Saved, true, "offline", false, false, "SavedChecking")]
     [InlineData(HeldSource.Saved, false, "offline", false, false, "SavedFailed")]

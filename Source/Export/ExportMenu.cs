@@ -523,6 +523,7 @@ internal static class ExportMenu {
             ScreenStatus.Writing => (Dialog.Clean("SRS_EXPORT_WRITING"), ""),
             ScreenStatus.WritingChecking => (mayBeWriting, checking),
             ScreenStatus.WritingFailed => (mayBeWriting, noAnswer),
+            ScreenStatus.MayBeWriting => (mayBeWriting, ""),
             ScreenStatus.SavedChecking => (Aged("SRS_EXPORT_SAVED_COPY"), checking),
             ScreenStatus.SavedFailed => (Aged("SRS_EXPORT_SAVED_COPY"), noAnswer),
             ScreenStatus.FreshFailed => (Aged("SRS_EXPORT_SHEET_TIMES"), noAnswer),

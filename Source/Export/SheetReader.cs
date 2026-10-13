@@ -20,6 +20,9 @@ internal sealed class ReaderHost {
     public Func<bool> Enabled { get; init; }
     public Func<string> Url { get; init; }
     public string CopyPath { get; init; }
+    /// milliseconds on a clock that never goes back
+    public Func<long> Now { get; init; } = () => Environment.TickCount64;
+    public Func<TimeSpan, Task> Delay { get; init; } = Task.Delay;
 }
 
 /// Why a write was not taken; None when it was.
@@ -32,16 +35,34 @@ internal readonly record struct WriteToken(string Url);
 /// of it (RemoteBests and the saved copy).
 ///
 /// ⚠️ Every decision whether an answer counts, every write of the held state
-/// and every handoff of the fetch happens under `gate`; the network never
-/// does. A check made outside it can pass, then lose to a URL change or a
-/// write landing before the publish.
+/// and every handoff of the fetch happens under `gate`; the network and the
+/// delay never do. A check made outside it can pass, then lose to a URL
+/// change or a write landing before the publish.
 internal static class SheetReader {
     private sealed class Flight {
         public string Url;
         public int Writes;
         public string Why;
+        // its fetch started once the script behind an unanswered export could
+        // no longer be running. Set where the fetch starts, never where it lands
+        public bool AskedPastLimit;
         public readonly TaskCompletionSource<ReadOutcome> Done = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
+
+    /// A POST srs gave up on. The script may run on, and a read made
+    /// meanwhile shows its cache or a batch half written: no cell says it ended.
+    private sealed class Settling {
+        public string Url;
+        // on host.Now(): the script cannot run past it. Moved to the moment
+        // the delay ends, whose clock need not agree with the host's
+        public long Limit;
+    }
+
+    // how long the script host lets one request run
+    private static readonly TimeSpan ScriptLimit = TimeSpan.FromSeconds(360);
+
+    /// From a request's timeout to the latest moment its script can still be running.
+    internal static readonly TimeSpan SettleAfter = ScriptLimit - ExportBatches.WriteTimeout;
 
     private static readonly object gate = new();
     private static ReaderHost host;
@@ -58,6 +79,9 @@ internal static class SheetReader {
     // on a screen opened after it was sent
     private static int posting;
     private static bool unansweredWrite;
+    // set with unansweredWrite when its request timed out, null whenever
+    // unansweredWrite is false: only a read asked past its limit clears both
+    private static Settling settling;
     // a read found a script of another protocol version, and none was taken in since
     private static bool scriptOutOfDate;
     // what that read said, for the settings; volatile: read each frame of a menu, without the gate
@@ -84,6 +108,7 @@ internal static class SheetReader {
             writes = 0;
             posting = 0;
             unansweredWrite = false;
+            settling = null;
             scriptOutOfDate = false;
             outOfDateError = null;
             heldUrl = null;
@@ -123,7 +148,8 @@ internal static class SheetReader {
     /// The out-of-date read's message, null once an answer was taken in.
     public static string OutOfDateError => outOfDateError;
 
-    /// A POST went unanswered and no read since says what it wrote.
+    /// A POST went unanswered and no read since says what it wrote. After a
+    /// timeout it stands until a read asked once the script cannot be running.
     public static bool UnansweredWrite {
         get {
             lock (gate) {
@@ -134,8 +160,9 @@ internal static class SheetReader {
 
     /// The task of the read that answers for the sheet as it is now. A read in
     /// flight is joined only if it was asked for this URL since the latest
-    /// write; otherwise this waits for the next one, which starts when the
-    /// current one lands.
+    /// write, and not before the limit of a script that may still be writing
+    /// when that limit has passed; otherwise this waits for the next one, which
+    /// starts when the current one lands.
     public static Task<ReadOutcome> Refresh(string why) {
         Flight start;
         lock (gate) {
@@ -150,7 +177,8 @@ internal static class SheetReader {
             }
 
             if (inFlight != null) {
-                if (inFlight.Url == current && inFlight.Writes == writes) {
+                bool tooEarly = !inFlight.AskedPastLimit && PastLimit(current);
+                if (inFlight.Url == current && inFlight.Writes == writes && !tooEarly) {
                     return inFlight.Done.Task;
                 }
 
@@ -159,7 +187,7 @@ internal static class SheetReader {
                 return next.Done.Task;
             }
 
-            start = inFlight = new Flight { Url = current, Writes = writes, Why = why };
+            start = inFlight = new Flight { Url = current, Writes = writes, Why = why, AskedPastLimit = PastLimit(current) };
         }
 
         Launch(start);
@@ -204,7 +232,12 @@ internal static class SheetReader {
                 if (dropped == null && outcome.Kind == ReadKind.Accepted) {
                     duplicates = RemoteBests.AcceptFresh(rows);
                     heldUrl = flight.Url;
-                    unansweredWrite = false;
+                    // the rows are taken in either way: only the flag waits
+                    if (settling == null || settling.Url != flight.Url || flight.AskedPastLimit) {
+                        unansweredWrite = false;
+                        settling = null;
+                    }
+
                     scriptOutOfDate = false;
                     outOfDateError = null;
                     SaveCopyLocked(flight.Url);
@@ -226,6 +259,7 @@ internal static class SheetReader {
                     next = null;
                     start.Url = current;
                     start.Writes = writes;
+                    start.AskedPastLimit = PastLimit(current);
                     inFlight = start;
                 } else if (next != null) {
                     next.Done.TrySetResult(new ReadOutcome(ReadKind.Cancelled));
@@ -266,6 +300,30 @@ internal static class SheetReader {
         if (dropped == null && outcome.Kind == ReadKind.Accepted) {
             RaiseChanged();
         }
+    }
+
+    // under the gate: a read of url asked now is asked after the script ended
+    private static bool PastLimit(string url) =>
+        settling != null && settling.Url == url && host.Now() >= settling.Limit;
+
+    // outside the gate, like the delay itself
+    private static void SettleLater(Settling state) {
+        host.Info($"an export timed out: its rows are held back for up to {(int) SettleAfter.TotalSeconds} s");
+        host.Delay(SettleAfter).ContinueWith(_ => Settled(state), TaskScheduler.Default);
+    }
+
+    private static void Settled(Settling state) {
+        lock (gate) {
+            // cleared, forgotten or replaced since: nothing to ask. The URL is
+            // set before Forget runs
+            if (settling != state || state.Url != host.Url()) {
+                return;
+            }
+
+            state.Limit = host.Now();
+        }
+
+        Refresh("an unanswered export settled");
     }
 
     // outside the gate: a handler is not ours to hold it for
@@ -332,13 +390,21 @@ internal static class SheetReader {
     /// On every outcome of an export; answered pairs with the first updates
     /// sent and stops where a request did not answer or could not be read.
     /// Applied with the mod off too: the sheet was written either way.
-    public static void EndWrite(WriteToken token, IReadOnlyList<ExportUpdate> sent, IReadOnlyList<ExportResult> answered) {
+    /// timedOut: the request left unanswered was given up on, so its script
+    /// may still be writing.
+    public static void EndWrite(WriteToken token, IReadOnlyList<ExportUpdate> sent, IReadOnlyList<ExportResult> answered,
+        bool timedOut = false) {
+        Settling opened = null;
         lock (gate) {
             writes++;
             posting--;
             if (token.Url == host.Url()) {
                 if (answered.Count != sent.Count) {
                     unansweredWrite = true;
+                    settling = opened = !timedOut ? null : new Settling {
+                        Url = token.Url,
+                        Limit = host.Now() + (long) SettleAfter.TotalMilliseconds,
+                    };
                 }
 
                 List<(SheetRowRef Row, string Time, string Timing)> written =
@@ -351,6 +417,10 @@ internal static class SheetReader {
         }
 
         Refresh("an export answered");
+        if (opened != null) {
+            SettleLater(opened);
+        }
+
         RaiseChanged();
     }
 
@@ -382,6 +452,7 @@ internal static class SheetReader {
             SendLedger.Shared.Reset();
             heldUrl = null;
             unansweredWrite = false;
+            settling = null;
             scriptOutOfDate = false;
             outOfDateError = null;
             next?.Done.TrySetResult(new ReadOutcome(ReadKind.Cancelled));

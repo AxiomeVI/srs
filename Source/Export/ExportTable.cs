@@ -5,7 +5,7 @@ using System.Linq;
 namespace Celeste.Mod.SpeedrunSheet;
 
 /// What the export screen's status line says.
-internal enum ScreenStatus { None, Loading, LoadFailed, Writing, WritingChecking, WritingFailed, SavedChecking, SavedFailed, FreshFailed }
+internal enum ScreenStatus { None, Loading, LoadFailed, Writing, WritingChecking, WritingFailed, MayBeWriting, SavedChecking, SavedFailed, FreshFailed }
 
 /// The export screen's decisions, game-free so they are tested; ExportMenu draws.
 internal static class ExportTable {
@@ -25,7 +25,11 @@ internal static class ExportTable {
         }
 
         if (unansweredWrite) {
-            return reading || error == null ? ScreenStatus.WritingChecking : ScreenStatus.WritingFailed;
+            // a read that landed and left it standing found the script still
+            // serving the cells from before its write: nothing is being checked
+            return reading ? ScreenStatus.WritingChecking
+                : error != null ? ScreenStatus.WritingFailed
+                : ScreenStatus.MayBeWriting;
         }
 
         if (source == HeldSource.Saved) {

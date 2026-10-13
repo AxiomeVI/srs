@@ -18,6 +18,9 @@ public sealed class SheetReaderTests : IDisposable {
     private bool enabled = true;
     private int urlReads;
     private int urlLimit = int.MaxValue;
+    // the host's clock, in milliseconds, and the delays it was asked for
+    private long now;
+    private readonly List<(TimeSpan After, TaskCompletionSource Done)> delays = [];
 
     private string CopyPath => Path.Combine(dir, "sheet-times.json");
     private static readonly SheetRowRef Crossing = new("A Sides", "1a", "Crossing");
@@ -38,6 +41,15 @@ public sealed class SheetReaderTests : IDisposable {
             Enabled = () => enabled,
             Url = () => urlReads++ < urlLimit ? url : UrlB,
             CopyPath = CopyPath,
+            Now = () => Interlocked.Read(ref now),
+            Delay = after => {
+                TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                lock (delays) {
+                    delays.Add((after, done));
+                }
+
+                return done.Task;
+            },
         });
         SheetReader.Reset();
     }
@@ -506,6 +518,168 @@ public sealed class SheetReaderTests : IDisposable {
 
         Assert.Equal("21.948", HeldTime());
         Assert.True(SheetReader.UnansweredWrite);
+    }
+
+    private static readonly long SettleMs = (long) SheetReader.SettleAfter.TotalMilliseconds;
+
+    // the sheet held at 25.000, then an export of 21.948 that timed out. The
+    // read EndWrite asks is in flight on return: HoldAnswer joins and answers it
+    private async Task TimeOut() {
+        await HoldAnswer("25.000");
+        SheetReader.EndWrite(Begin(), Sent("21.948"), [], timedOut: true);
+        Assert.True(SheetReader.UnansweredWrite);
+        Assert.Equal(2, Asked);
+    }
+
+    private TaskCompletionSource TheDelay() {
+        lock (delays) {
+            (TimeSpan after, TaskCompletionSource done) = Assert.Single(delays);
+            Assert.Equal(SheetReader.SettleAfter, after);
+            return done;
+        }
+    }
+
+    [Fact]
+    public void TheScriptIsGivenItsHostsLimitToEnd() {
+        Assert.True(SheetReader.SettleAfter > TimeSpan.Zero);
+    }
+
+    // the script may still be writing, and answers from before its write
+    [Fact]
+    public async Task AReadOfTheOldCellsAfterATimedOutWriteKeepsExportOff() {
+        await TimeOut();
+        int accepts = RemoteBests.Accepts;
+
+        await HoldAnswer("25.000");
+
+        // taken in for its rows all the same
+        Assert.Equal(accepts + 1, RemoteBests.Accepts);
+        Assert.True(SheetReader.UnansweredWrite);
+        Assert.Equal(WriteRefusal.Unanswered, SheetReader.TryBeginWrite(RemoteBests.Accepts, out _));
+    }
+
+    // a read during the script's run may show a batch half written
+    [Fact]
+    public async Task ASentRowsCellThatMovedProvesNothingBeforeTheLimit() {
+        await TimeOut();
+
+        await HoldAnswer("21.948");
+
+        Assert.Equal("21.948", HeldTime());
+        Assert.True(SheetReader.UnansweredWrite);
+        Assert.Equal(WriteRefusal.Unanswered, SheetReader.TryBeginWrite(RemoteBests.Accepts, out _));
+    }
+
+    [Fact]
+    public async Task AReadAskedAfterTheScriptsLimitProvesItEnded() {
+        await TimeOut();
+
+        Interlocked.Add(ref now, SettleMs - 1);
+        await HoldAnswer("25.000");
+        Assert.True(SheetReader.UnansweredWrite);
+
+        Interlocked.Add(ref now, 1);
+        await HoldAnswer("25.000");
+        Assert.False(SheetReader.UnansweredWrite);
+        Assert.Equal(WriteRefusal.None, SheetReader.TryBeginWrite(RemoteBests.Accepts, out _));
+    }
+
+    // when it was asked, not when it landed
+    [Fact]
+    public async Task AReadAskedBeforeTheLimitAndLandedAfterProvesNothing() {
+        await TimeOut();
+        Task<ReadOutcome> early = SheetReader.Refresh("join");
+        Interlocked.Add(ref now, SettleMs);
+
+        Fetch(1).Answer.SetResult((Answer("25.000"), null));
+        await Within(early);
+
+        Assert.True(SheetReader.UnansweredWrite);
+    }
+
+    [Fact]
+    public async Task TheSheetIsAskedAgainWhenTheDelayEnds() {
+        await TimeOut();
+        await HoldAnswer("25.000");
+        Assert.Equal(2, Asked);
+
+        // the host's clock has not moved: the delay decides
+        TheDelay().SetResult();
+        await Until(() => Asked == 3);
+        Fetch(2).Answer.SetResult((Answer("25.000"), null));
+
+        await Until(() => !SheetReader.UnansweredWrite);
+    }
+
+    // a read in flight when the delay ends was asked too early to prove anything
+    [Fact]
+    public async Task TheReadAskedWhenTheDelayEndsNeverJoinsAnEarlierOne() {
+        await TimeOut();
+
+        TheDelay().SetResult();
+        await Task.Delay(50);
+        Assert.Equal(2, Asked);
+        Fetch(1).Answer.SetResult((Answer("25.000"), null));
+        await Until(() => Asked == 3);
+        Assert.True(SheetReader.UnansweredWrite);
+
+        Fetch(2).Answer.SetResult((Answer("25.000"), null));
+        await Until(() => !SheetReader.UnansweredWrite);
+    }
+
+    [Fact]
+    public async Task NothingIsAskedWhenTheDelayEndsOnAStateAlreadyCleared() {
+        await TimeOut();
+        await HoldAnswer("25.000");
+        Interlocked.Add(ref now, SettleMs);
+        await HoldAnswer("25.000");
+        Assert.False(SheetReader.UnansweredWrite);
+        int asked = Asked;
+
+        TheDelay().SetResult();
+        await Task.Delay(100);
+
+        Assert.Equal(asked, Asked);
+    }
+
+    [Fact]
+    public async Task NothingIsAskedWhenTheDelayEndsAfterForget() {
+        await TimeOut();
+        await HoldAnswer("25.000");
+        SheetReader.Forget();
+        Assert.False(SheetReader.UnansweredWrite);
+        int asked = Asked;
+
+        TheDelay().SetResult();
+        await Task.Delay(100);
+
+        Assert.Equal(asked, Asked);
+    }
+
+    [Fact]
+    public async Task NothingIsAskedWhenTheDelayEndsOnAnotherSheet() {
+        await TimeOut();
+        await HoldAnswer("25.000");
+        // the URL is set before Forget runs
+        url = UrlB;
+        int asked = Asked;
+
+        TheDelay().SetResult();
+        await Task.Delay(100);
+
+        Assert.Equal(asked, Asked);
+    }
+
+    // an error or a dropped connection: the script is not running on
+    [Fact]
+    public async Task AnUnansweredWriteThatDidNotTimeOutIsClearedByTheFirstRead() {
+        await HoldAnswer("25.000");
+        SheetReader.EndWrite(Begin(), Sent("21.948"), [], timedOut: false);
+        Assert.True(SheetReader.UnansweredWrite);
+
+        await HoldAnswer("25.000");
+
+        Assert.False(SheetReader.UnansweredWrite);
     }
 
     [Fact]
