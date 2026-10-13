@@ -45,7 +45,14 @@ internal static class TierLine {
     public static bool StandardInFileTime(SegmentRule rule) => rule.SpansLeaves && rule.Scope == "1a";
 
     /// "1a Crossing", "6a Lake": the scope, unless the name is it ("1c",
-    /// Farewell's "Farewell").
+    /// Farewell's "Farewell"). The berry and full clear rows read as players
+    /// write them: "1arb Start", "1afc Start".
     public static string NameOf(string scope, string name) =>
-        name == scope ? name : $"{scope} {name}";
+        name == scope ? name
+        : Leads(name, "ARB") ? scope + "rb" + name[3..]
+        : Leads(name, "FC") ? scope + "fc" + name[2..]
+        : $"{scope} {name}";
+
+    private static bool Leads(string name, string word) =>
+        name == word || name.StartsWith(word + " ", StringComparison.Ordinal);
 }

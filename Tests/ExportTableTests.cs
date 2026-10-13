@@ -81,8 +81,8 @@ public class ExportTableTests {
     // an IL variant's label is unreadable without its emoji: the srs name
     [InlineData("A Sides", "4a", "\U0001F499+\U0001F4FC Clear", "4a IL Heart Tape Clear")]
     [InlineData("A Sides", "4a", "Clear", "4a IL")]
-    [InlineData("ARB/Full Clear", "1a \U0001F353", "Start", "1a ARB Start")]
-    [InlineData("ARB/Full Clear", "2a \U0001F353", "2a \U0001F353", "2a ARB IL")]
+    [InlineData("ARB/Full Clear", "1a \U0001F353", "Start", "1arb Start")]
+    [InlineData("ARB/Full Clear", "2a \U0001F353", "2a \U0001F353", "2arb IL")]
     // not a row srs writes: the sheet's label
     [InlineData("A Sides", "1a", "Elsewhere", "1a Elsewhere")]
     public void RowLabelsCarryTheirChapterOnce(string tab, string chapter, string cp, string label) {
