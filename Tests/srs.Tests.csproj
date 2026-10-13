@@ -47,6 +47,7 @@
          the sheet gets noticed (see SheetConsistencyTests) -->
     <ItemGroup>
         <None Include="Fixtures/*.csv" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="../Dialog/*.txt" Link="Dialog/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <ItemGroup>

@@ -95,8 +95,6 @@ public sealed class ExportSendTests : IDisposable {
         Assert.True(condition());
     }
 
-    private static SendLedger.Request Req(ExportUpdate u) => SendLedger.Request.Of(u);
-
     [Fact]
     public void ARefusedWriteStartsNothing() {
         // nothing held: the sheet has not answered

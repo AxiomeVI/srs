@@ -50,7 +50,9 @@ internal static class SheetReader {
     // shared by every caller until it starts
     private static Flight next;
     // bumped when a POST is sent and when it answers: the script serves the
-    // old cells until its write ends, so a read started in between is dropped
+    // old cells until its write ends, so a read asked before a POST or during
+    // it is dropped if it lands after. One asked and landed during it is taken
+    // in, and EndWrite applies the written cells over it
     private static int writes;
     // POSTs sent and not yet answered: Export stays off while one is out, even
     // on a screen opened after it was sent

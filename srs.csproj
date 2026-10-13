@@ -62,6 +62,8 @@
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="bin" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="bin" />
         <Copy SourceFiles="everest.yaml" DestinationFolder="build" />
+        <!-- the notice travels with the copy: its licence asks for it -->
+        <Copy SourceFiles="Source/MenuTools/LICENSE" DestinationFiles="build/CelesteMenuTools-LICENSE.txt" />
         <Copy SourceFiles="@(DialogResources)" DestinationFolder="build/Dialog/%(RecursiveDir)" SkipUnchangedFiles="true" />
     </Target>
 </Project>

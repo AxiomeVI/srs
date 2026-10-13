@@ -280,7 +280,7 @@ internal static class ExportMenu {
         int failed = self.Wipe == null || !SrsModule.Settings.Enabled ? AutoExport.TakeFailed() : 0;
 
         // a level replaced under an open screen would leave `menu` set and
-        // Open() refusing for the session. Speed Run Tool refuses its own loads
+        // Open() refusing for the session. Speed Run Tool's hotkeys refuse a load
         // while paused, but a console load does it
         if (menu != null && menu.Scene != self) {
             Logger.Log(LogLevel.Warn, LogTag, "the level was replaced under the export screen; closed it");
