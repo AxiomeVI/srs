@@ -91,6 +91,7 @@ SRS_EXPORT_STATUS_CHANGED=  sheet changed, not written
 SRS_EXPORT_DUPLICATE=       in two places on the sheet
 SRS_EXPORT_SUMMARY_WRITTEN= Written:
 SRS_EXPORT_SUMMARY_UNCHANGED= Already on the sheet:
+SRS_EXPORT_SUMMARY_MORE= more not written, listed in log.txt
 SRS_EXPORT_SAVED_COPY=      Saved copy
 SRS_EXPORT_SHEET_TIMES=     Sheet times
 SRS_EXPORT_CHECKING=        Checking the sheet...

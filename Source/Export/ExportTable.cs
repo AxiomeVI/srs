@@ -117,6 +117,10 @@ internal static class ExportTable {
         return string.Join("\n", lines);
     }
 
+    // the summary has one selectable item, its Close button, so it cannot
+    // scroll: lines past the screen's height would never show
+    internal const int MaxOtherRows = 10;
+
     /// One line for the rows written, one for those already on the sheet, whose
     /// reasons only go to the log, and one per other row with the script's
     /// reason, untranslated: srs does not author it.
@@ -133,9 +137,14 @@ internal static class ExportTable {
             lines.Add($"{L("SRS_EXPORT_SUMMARY_UNCHANGED")} {Labels("unchanged")}");
         }
 
-        foreach (ExportResult r in results.Where(r => r.Status is not ("written" or "unchanged"))) {
+        List<ExportResult> others = results.Where(r => r.Status is not ("written" or "unchanged")).ToList();
+        foreach (ExportResult r in others.Take(MaxOtherRows)) {
             lines.Add($"{RowLabel(r.Tab, r.Chapter, r.Cp)}: {StatusText(r.Status)}"
                 + (string.IsNullOrEmpty(r.Reason) ? "" : $" ({r.Reason})"));
+        }
+
+        if (others.Count > MaxOtherRows) {
+            lines.Add($"+{others.Count - MaxOtherRows} {L("SRS_EXPORT_SUMMARY_MORE")}");
         }
 
         if (lines.Count == 0) {

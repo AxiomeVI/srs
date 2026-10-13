@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace Celeste.Mod.SpeedrunSheet.Tests;
@@ -105,6 +106,17 @@ public class ExportTableTests {
             "2a Awake: SRS_EXPORT_STATUS_CHANGED (now 40.1)",
             "2a Intervention: teapot",
         ], lines);
+    }
+
+    // the summary cannot scroll
+    [Fact]
+    public void TheSummaryCountsTheRowsItHasNoRoomFor() {
+        List<ExportResult> refused = Enumerable.Range(0, ExportTable.MaxOtherRows + 3)
+            .Select(i => new ExportResult { Tab = "A Sides", Chapter = "2a", Cp = "Row " + i, Status = "refused" }).ToList();
+
+        List<string> lines = ExportTable.SummaryLines(refused);
+        Assert.Equal(ExportTable.MaxOtherRows + 1, lines.Count);
+        Assert.Equal("+3 SRS_EXPORT_SUMMARY_MORE", lines[^1]);
     }
 
     [Fact]
