@@ -217,6 +217,9 @@ public class EndpointUrlTests {
     [InlineData("http://script.google.com/macros/s/AKfycbx123/exec")]
     [InlineData("script.google.com/macros/s/AKfycbx123/exec")]
     [InlineData("not a url at all")]
+    // a copy broken over two lines, or with a space in it
+    [InlineData("https://script.google.com/macros/s/AKfy\ncbx123/exec")]
+    [InlineData("https://script.google.com/macros/s/AKfy cbx123/exec")]
     public void RefusesEverythingElse(string url) {
         Assert.False(ExportProtocol.IsEndpointUrl(url));
     }

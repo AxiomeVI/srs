@@ -24,6 +24,34 @@ public static class ExportUrlMenu {
 
     internal static readonly Color ErrorColor = Calc.HexToColor("FF4040");
 
+    /// On the closed Your Sheet row while something in it stops an export: an
+    /// out-of-date script, or a last read that failed. The lines that say
+    /// which are inside the group.
+    internal sealed class TroubleMark : ISubMenuPreview {
+        private const string Mark = "!";
+        // the group's title draws its arrow this far after the label, and the mark follows the arrow
+        private const float Gap = 10f;
+
+        /// The group the mark is on: set once it exists.
+        public RecursiveSubMenu Group { private get; set; }
+
+        // drawn beside the label, where the eye is, not in the column a preview is given
+        public float Width() => 0f;
+
+        public void Render(Vector2 position, Color color, float alpha) {
+            if (Group?.Container == null || !ExportTarget.IsSet
+                || (SheetReader.OutOfDateError == null && RemoteBests.Error == null)) {
+                return;
+            }
+
+            // position is the row's right edge: back to its left, then past the label and its arrow
+            float x = position.X - Group.Container.Width + ActiveFont.Measure(Group.Label).X
+                + GFX.Gui["downarrow"].Width + 2f * Gap;
+            ActiveFont.DrawOutline(Mark, new Vector2(x, position.Y), new Vector2(0f, 0.5f), Vector2.One,
+                ErrorColor * alpha, 2f, Color.Black * (alpha * alpha * alpha));
+        }
+    }
+
     /// Adds the URL entry, its status line and the Forget button, which stays
     /// hidden while no URL is set.
     internal static void CreateMenuEntries(RecursiveSubMenuBase group) {
@@ -57,7 +85,7 @@ public static class ExportUrlMenu {
             if (!checking) {
                 string unread = ExportTarget.IsSet ? Localized(RemoteBests.Error) : null;
                 trouble = message ?? Localized(SheetReader.OutOfDateError)
-                    ?? (unread == null ? null : $"{Dialog.Clean("SRS_EXPORT_NO_ANSWER")}\n{unread}");
+                    ?? unread;
                 // a SubHeader never wraps, and one line this long widens the whole
                 // menu: one sentence a line
                 trouble = trouble?.Replace(". ", ".\n");
@@ -203,7 +231,7 @@ public static class ExportUrlMenu {
                 ReadOutcome outcome = task.Result;
                 message = outcome.Kind switch {
                     ReadKind.Accepted => Dialog.Clean("SRS_EXPORT_URL_CHECK_OK"),
-                    ReadKind.Unreachable => $"{Dialog.Clean("SRS_EXPORT_URL_CHECK_FAILED")} {outcome.Error}",
+                    ReadKind.Unreachable => outcome.Error,
                     ReadKind.OutOfDate => outcome.Error,
                     ReadKind.NoRows => Dialog.Clean("SRS_EXPORT_URL_CHECK_NO_ROWS"),
                     ReadKind.NotTheScript => Dialog.Clean("SRS_EXPORT_URL_CHECK_NOT_SHEET"),

@@ -5,14 +5,15 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// The session's best of every row, game-free so the tests can pin what a run
 /// replaces. A row's best is replaced only by a faster run of that same row.
 internal sealed class RunBook {
-    internal readonly record struct Run(string Scope, string Name, long Ticks, SaveAndQuitNote Note);
+    /// ByTas: closed while a TAS was playing, which auto-export never sends.
+    internal readonly record struct Run(string Scope, string Name, long Ticks, SaveAndQuitNote Note, bool ByTas = false);
 
     private readonly Dictionary<(string Scope, string Name), Run> best = [];
 
     public IReadOnlyCollection<Run> All => best.Values;
 
     /// Offers what one event closed; returns the runs that improved.
-    public List<Run> Offer(IReadOnlyList<SegmentRecord> records) {
+    public List<Run> Offer(IReadOnlyList<SegmentRecord> records, bool byTas = false) {
         List<Run> improved = [];
         foreach (SegmentRecord record in records) {
             SegmentRule rule = record.Rule;
@@ -20,7 +21,7 @@ internal sealed class RunBook {
                 continue;
             }
 
-            Run run = new(rule.Scope, rule.Name, record.Ticks, record.Note);
+            Run run = new(rule.Scope, rule.Name, record.Ticks, record.Note, byTas);
             best[(rule.Scope, rule.Name)] = run;
             improved.Add(run);
         }

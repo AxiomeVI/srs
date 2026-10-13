@@ -123,9 +123,12 @@ public class TierLineTests {
     // the name is its scope
     [InlineData("1c", "1c", "1c")]
     [InlineData("Farewell", "Farewell", "Farewell")]
-    [InlineData("1a", "ARB Start", "1a ARB Start")]
-    [InlineData("5a", "ARB Depths", "5a ARB Depths")]
-    [InlineData("7a", "ARB IL", "7a ARB IL")]
+    // the berry and full clear rows join their side to the word
+    [InlineData("1a", "ARB Start", "1arb Start")]
+    [InlineData("5a", "ARB Depths", "5arb Depths")]
+    [InlineData("7a", "ARB IL", "7arb IL")]
+    [InlineData("1a", "FC Start", "1afc Start")]
+    [InlineData("6a", "FC IL", "6afc IL")]
     public void TheNameLeadsWithItsScopeOnce(string scope, string name, string shown) {
         Assert.Equal(shown, TierLine.NameOf(scope, name));
     }

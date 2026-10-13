@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -110,7 +111,10 @@ public static class ExportProtocol {
             return false;
         }
 
-        return Uri.TryCreate(url.Trim(), UriKind.Absolute, out Uri uri)
+        // a copy broken over two lines parses, escaped, and no request can use it
+        string trimmed = url.Trim();
+        return !trimmed.Any(char.IsWhiteSpace)
+            && Uri.TryCreate(trimmed, UriKind.Absolute, out Uri uri)
             && uri.Scheme == Uri.UriSchemeHttps
             && uri.AbsolutePath.EndsWith("/exec", StringComparison.Ordinal);
     }

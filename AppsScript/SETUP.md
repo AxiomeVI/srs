@@ -72,6 +72,7 @@ to be shared with anyone.
 write over them. Keep it to yourself:
 
 - Never write it inside the sheet: not in a cell, a comment or the description.
+- It stays on your clipboard after you set it in Mod Options: copy something else afterwards.
 - Don't paste it when asking for help. srs keeps it in `Saves/srs/export-url.txt`, not in its
   settings file, so a settings file you share does not carry it; don't share that one.
 - If it leaks, revoke it: **Deploy > Manage deployments >** archive the deployment, create a
@@ -124,3 +125,7 @@ back stale, but an edit you make by hand in the browser can take up to five minu
 
 **Review before confirming.** A time already in the sheet is overwritten by the ticked row
 without asking.
+
+**Auto Export on PB has no review.** With that option on (it is off by default, in Mod Options),
+srs sends a time as soon as its segment ends, with no screen: every row the export screen would
+have ticked by itself.

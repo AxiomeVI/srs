@@ -5,7 +5,7 @@ using System.Linq;
 namespace Celeste.Mod.SpeedrunSheet;
 
 /// What the export screen's status line says.
-internal enum ScreenStatus { None, Loading, LoadFailed, Writing, WritingChecking, WritingFailed, SavedChecking, SavedFailed, FreshFailed }
+internal enum ScreenStatus { None, Loading, LoadFailed, Writing, WritingChecking, WritingFailed, MayBeWriting, SavedChecking, SavedFailed, FreshFailed }
 
 /// The export screen's decisions, game-free so they are tested; ExportMenu draws.
 internal static class ExportTable {
@@ -25,7 +25,11 @@ internal static class ExportTable {
         }
 
         if (unansweredWrite) {
-            return reading || error == null ? ScreenStatus.WritingChecking : ScreenStatus.WritingFailed;
+            // a read that landed and left it standing found the script still
+            // serving the cells from before its write: nothing is being checked
+            return reading ? ScreenStatus.WritingChecking
+                : error != null ? ScreenStatus.WritingFailed
+                : ScreenStatus.MayBeWriting;
         }
 
         if (source == HeldSource.Saved) {
@@ -117,13 +121,23 @@ internal static class ExportTable {
         return string.Join("\n", lines);
     }
 
+    // the summary has one selectable item, its Close button, so it cannot
+    // scroll, and past 930 px its title leaves the screen. Measured in game:
+    // both lists full, every other row and a failure line stay under it
+    internal const int MaxOtherRows = 6;
+    internal const int MaxNamedRows = 10;
+
     /// One line for the rows written, one for those already on the sheet, whose
     /// reasons only go to the log, and one per other row with the script's
     /// reason, untranslated: srs does not author it.
     public static List<string> SummaryLines(IReadOnlyList<ExportResult> results) {
         List<string> lines = [];
-        string Labels(string status) => string.Join(", ", results.Where(r => r.Status == status)
-            .Select(r => RowLabel(r.Tab, r.Chapter, r.Cp)));
+        string Labels(string status) {
+            List<string> labels = results.Where(r => r.Status == status)
+                .Select(r => RowLabel(r.Tab, r.Chapter, r.Cp)).ToList();
+            return string.Join(", ", labels.Take(MaxNamedRows))
+                + (labels.Count > MaxNamedRows ? $", +{labels.Count - MaxNamedRows}" : "");
+        }
 
         if (results.Any(r => r.Status == "written")) {
             lines.Add($"{L("SRS_EXPORT_SUMMARY_WRITTEN")} {Labels("written")}");
@@ -133,9 +147,14 @@ internal static class ExportTable {
             lines.Add($"{L("SRS_EXPORT_SUMMARY_UNCHANGED")} {Labels("unchanged")}");
         }
 
-        foreach (ExportResult r in results.Where(r => r.Status is not ("written" or "unchanged"))) {
+        List<ExportResult> others = results.Where(r => r.Status is not ("written" or "unchanged")).ToList();
+        foreach (ExportResult r in others.Take(MaxOtherRows)) {
             lines.Add($"{RowLabel(r.Tab, r.Chapter, r.Cp)}: {StatusText(r.Status)}"
                 + (string.IsNullOrEmpty(r.Reason) ? "" : $" ({r.Reason})"));
+        }
+
+        if (others.Count > MaxOtherRows) {
+            lines.Add($"+{others.Count - MaxOtherRows} {L("SRS_EXPORT_SUMMARY_MORE")}");
         }
 
         if (lines.Count == 0) {

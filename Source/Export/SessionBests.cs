@@ -14,7 +14,7 @@ internal static class SessionBests {
     // deliberately NOT registered with SpeedrunTool's save states: a time run
     // is a fact about the session, and a load must not take it back
     /// Whether any run improved.
-    public static bool Record(IReadOnlyList<SegmentRecord> records, Session session) {
+    public static bool Record(IReadOnlyList<SegmentRecord> records, Session session, bool byTas) {
         string scope = session == null ? null : SegmentAutoDetect.ScopeOf(session);
         List<SegmentRecord> here = [];
         foreach (SegmentRecord record in records) {
@@ -23,7 +23,7 @@ internal static class SessionBests {
             }
         }
 
-        List<RunBook.Run> improved = book.Offer(here);
+        List<RunBook.Run> improved = book.Offer(here, byTas);
         foreach (RunBook.Run run in improved) {
             Logger.Log(LogLevel.Info, LogTag, $"session best {run.Scope}/{run.Name} {TimeFormat.FromTicks(run.Ticks)}");
             if (run.Note != SaveAndQuitNote.Without) {

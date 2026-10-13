@@ -17,6 +17,9 @@ public sealed class ExportSendTests : IDisposable {
     private readonly List<string> infos = [];
     private readonly List<string> warns = [];
     private bool goOn = true;
+    // what the host says of a request that failed
+    private bool timesOut;
+    private int delays;
 
     public ExportSendTests() {
         SheetReader.Install(new ReaderHost {
@@ -29,6 +32,10 @@ public sealed class ExportSendTests : IDisposable {
             Enabled = () => true,
             Url = () => Url,
             CopyPath = null,
+            Delay = _ => {
+                Interlocked.Increment(ref delays);
+                return new TaskCompletionSource().Task;
+            },
         });
         ExportSend.Install(new SendHost {
             Post = (_, json) => {
@@ -38,7 +45,8 @@ public sealed class ExportSendTests : IDisposable {
                     posts.Add(answer);
                 }
 
-                return answer.Task;
+                return answer.Task.ContinueWith(task => (task.Result.Item1, task.Result.Item2, timesOut),
+                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             },
             Info = message => { lock (infos) { infos.Add(message); } },
             Warn = message => { lock (warns) { warns.Add(message); } },
@@ -94,8 +102,6 @@ public sealed class ExportSendTests : IDisposable {
 
         Assert.True(condition());
     }
-
-    private static SendLedger.Request Req(ExportUpdate u) => SendLedger.Request.Of(u);
 
     [Fact]
     public void ARefusedWriteStartsNothing() {
@@ -185,6 +191,24 @@ public sealed class ExportSendTests : IDisposable {
         Assert.False(SheetReader.IsWriting);
         // the request never posted left nothing unanswered
         Assert.False(SheetReader.UnansweredWrite);
+    }
+
+    // only a request given up on leaves a script that may still be writing
+    [Theory]
+    [InlineData(true, 1)]
+    [InlineData(false, 0)]
+    public async Task TellsTheReaderWhetherTheUnansweredRequestTimedOut(bool timedOut, int scheduled) {
+        int accepts = Hold();
+        int calls = 0;
+        timesOut = timedOut;
+
+        ExportSend.TryStart(Updates(1), accepts, "manual", () => true, _ => { }, _ => Interlocked.Increment(ref calls));
+        await Until(() => Posts == 1);
+        Post(0).SetResult((null, "no answer"));
+        await Until(() => Volatile.Read(ref calls) == 1);
+
+        Assert.True(SheetReader.UnansweredWrite);
+        Assert.Equal(scheduled, Volatile.Read(ref delays));
     }
 
     [Fact]

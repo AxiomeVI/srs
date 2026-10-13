@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace Celeste.Mod.SpeedrunSheet.Tests;
@@ -17,6 +18,9 @@ public class ExportTableTests {
     [InlineData(HeldSource.Fresh, false, "offline", true, true, "Writing")]
     [InlineData(HeldSource.Saved, true, null, true, false, "WritingChecking")]
     [InlineData(HeldSource.Fresh, false, "offline", true, false, "WritingFailed")]
+    [InlineData(HeldSource.Fresh, true, "offline", true, false, "WritingChecking")]
+    // the read landed and the export is still unanswered: nothing is being checked
+    [InlineData(HeldSource.Fresh, false, null, true, false, "MayBeWriting")]
     [InlineData(HeldSource.Saved, true, null, false, false, "SavedChecking")]
     [InlineData(HeldSource.Saved, true, "offline", false, false, "SavedChecking")]
     [InlineData(HeldSource.Saved, false, "offline", false, false, "SavedFailed")]
@@ -81,8 +85,8 @@ public class ExportTableTests {
     // an IL variant's label is unreadable without its emoji: the srs name
     [InlineData("A Sides", "4a", "\U0001F499+\U0001F4FC Clear", "4a IL Heart Tape Clear")]
     [InlineData("A Sides", "4a", "Clear", "4a IL")]
-    [InlineData("ARB/Full Clear", "1a \U0001F353", "Start", "1a ARB Start")]
-    [InlineData("ARB/Full Clear", "2a \U0001F353", "2a \U0001F353", "2a ARB IL")]
+    [InlineData("ARB/Full Clear", "1a \U0001F353", "Start", "1arb Start")]
+    [InlineData("ARB/Full Clear", "2a \U0001F353", "2a \U0001F353", "2arb IL")]
     // not a row srs writes: the sheet's label
     [InlineData("A Sides", "1a", "Elsewhere", "1a Elsewhere")]
     public void RowLabelsCarryTheirChapterOnce(string tab, string chapter, string cp, string label) {
@@ -105,6 +109,26 @@ public class ExportTableTests {
             "2a Awake: SRS_EXPORT_STATUS_CHANGED (now 40.1)",
             "2a Intervention: teapot",
         ], lines);
+    }
+
+    // the summary cannot scroll
+    [Fact]
+    public void TheSummaryCountsTheRowsItHasNoRoomFor() {
+        List<ExportResult> refused = Enumerable.Range(0, ExportTable.MaxOtherRows + 3)
+            .Select(i => new ExportResult { Tab = "A Sides", Chapter = "2a", Cp = "Row " + i, Status = "refused" }).ToList();
+
+        List<string> lines = ExportTable.SummaryLines(refused);
+        Assert.Equal(ExportTable.MaxOtherRows + 1, lines.Count);
+        Assert.Equal("+3 SRS_EXPORT_SUMMARY_MORE", lines[^1]);
+    }
+
+    [Fact]
+    public void TheSummaryNamesTheFirstRowsWrittenAndCountsTheRest() {
+        List<ExportResult> written = Enumerable.Range(0, ExportTable.MaxNamedRows + 5)
+            .Select(i => new ExportResult { Tab = "A Sides", Chapter = "2a", Cp = "Row " + i, Status = "written" }).ToList();
+
+        string line = Assert.Single(ExportTable.SummaryLines(written));
+        Assert.EndsWith($"2a Row {ExportTable.MaxNamedRows - 1}, +5", line);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Celeste.Mod.SpeedrunTool;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -156,9 +157,23 @@ public static class RunWatcher {
         public static Action<Action<string, string, ulong>> RemoveSplitObserver;
         public static Func<int> InteropVersion;
     }
+
+    [ModImportName("CelesteTAS")]
+    private static class TasImports {
+        public static Func<bool> IsTasActive;
+    }
 #pragma warning restore CS0649
 
     private static bool observing;
+
+    // for the in-game tests, which play their rows by TAS: a Debug build
+    // started with this file in place auto-exports those too
+#if DEBUG
+    private static readonly bool testSendsTasRuns =
+        System.IO.File.Exists(System.IO.Path.Combine(Everest.PathSettings, "srs", "test-auto-export-tas"));
+#else
+    private const bool testSendsTasRuns = false;
+#endif
 
     public static void Load() {
         // hook order: see SrsModule.Load
@@ -189,6 +204,7 @@ public static class RunWatcher {
             (_, level) => restoredWipe = level.Wipe, null, null, null, null);
 
         typeof(SplitImports).ModInterop();
+        typeof(TasImports).ModInterop();
 
         tracker = new RunTracker(SegmentRules.All, null);
     }
@@ -268,11 +284,25 @@ public static class RunWatcher {
         return restarted;
     }
 
+    /// Any assist or variant but Play as Badeline, which changes nothing of
+    /// the run. The game resets them all on a file with neither mode on.
+    private static bool Assisted() {
+        if (SaveData.Instance == null) {
+            return false;
+        }
+
+        // field by field: Equals on a struct boxes, on every frame
+        Assists a = SaveData.Instance.Assists;
+        return a.GameSpeed != 10 || a.Invincible || a.DashMode != Assists.DashModes.Normal || a.DashAssist
+            || a.InfiniteStamina || a.MirrorMode || a.ThreeSixtyDashing || a.InvisibleMotion || a.NoGrabbing
+            || a.LowFriction || a.SuperDashing || a.Hiccups;
+    }
+
     private static void LevelOnUpdate(On.Celeste.Level.orig_Update orig, Level self) {
-        // switched off, or without Speed Run Tool's SaveLoad: nothing is fed.
-        // Moved is set on every frame off, so a savestate made or loaded
-        // meanwhile opens nothing
-        if (!SrsModule.Settings.Enabled || saveLoadAction == null) {
+        // switched off, without Speed Run Tool's SaveLoad, or under an assist
+        // or a variant: nothing is fed. Moved is set on every frame off, so a
+        // savestate made or loaded meanwhile opens nothing
+        if (!SrsModule.Settings.Enabled || saveLoadAction == null || Assisted()) {
             // cleared after orig too: a LoadLevel or a restart inside it would set them
             fedLastFrame = false;
             restoredWipe = null;
@@ -788,8 +818,11 @@ public static class RunWatcher {
         }
 
         // the copy is all auto-export takes from the game thread
-        if (SessionBests.Record(records, session) && SrsModule.Settings.AutoExport) {
-            AutoExport.Offer([.. SessionBests.All], session == null ? null : SegmentAutoDetect.ScopeOf(session));
+        // and it takes no run a TAS played: nobody reviews what it sends
+        if (SessionBests.Record(records, session, !testSendsTasRuns && TasImports.IsTasActive?.Invoke() == true)
+            && SrsModule.Settings.AutoExport) {
+            AutoExport.Offer([.. SessionBests.All.Where(run => !run.ByTas)],
+                session == null ? null : SegmentAutoDetect.ScopeOf(session));
         }
 
         LatestRoom = session.Level;

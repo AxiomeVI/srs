@@ -9,8 +9,8 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// What ExportSend needs from the game, passed in so that it compiles into the
 /// test project.
 internal sealed class SendHost {
-    /// url, json
-    public Func<string, string, Task<(string body, string error)>> Post { get; init; }
+    /// url, json. timedOut: the request was given up on, not refused
+    public Func<string, string, Task<(string body, string error, bool timedOut)>> Post { get; init; }
     public Action<string> Info { get; init; }
     public Action<string> Warn { get; init; }
 }
@@ -54,28 +54,45 @@ internal static class ExportSend {
         // what EndWrite is told was sent: a send stopped before a request left
         // nothing unanswered
         int posted = 0;
-        _ = ExportBatches.Send(sent, json => sender.Post(token.Url, json), goOn, progress,
-            batch => {
-                SendLedger.Shared.Posted(token.Url, batch);
-                Interlocked.Add(ref posted, batch.Count);
-            })
-            .ContinueWith(task => Finish(sender, token, sent, Volatile.Read(ref posted), task, done),
+        // a send stops at its first failed request, so this is about the one
+        // left unanswered
+        int timedOut = 0;
+        _ = ExportBatches.Send(sent,
+                json => sender.Post(token.Url, json).ContinueWith(task => {
+                    (string body, string error, bool gaveUp) = task.Result;
+                    if (gaveUp) {
+                        Volatile.Write(ref timedOut, 1);
+                    }
+
+                    return (body, error);
+                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default),
+                goOn, progress,
+                batch => {
+                    SendLedger.Shared.Posted(token.Url, batch);
+                    Interlocked.Add(ref posted, batch.Count);
+                })
+            .ContinueWith(task => Finish(sender, token, sent, Volatile.Read(ref posted),
+                    Volatile.Read(ref timedOut) == 1, task, done),
                 TaskScheduler.Default);
         return WriteRefusal.None;
     }
 
     // runs on a worker; only done may reach a screen, and through its own queue
     private static void Finish(SendHost sender, WriteToken token, IReadOnlyList<ExportUpdate> sent, int posted,
-        Task<(List<ExportResult> Results, int? Ms, string Error, bool Stopped)> task, Action<SendOutcome> done) {
+        bool timedOut, Task<(List<ExportResult> Results, int? Ms, string Error, bool Stopped)> task, Action<SendOutcome> done) {
         SendOutcome outcome = new(sent, [], null, false);
         // nothing above this continuation observes a throw: done would never
         // be called. A throw from a log line keeps the answers already read
         try {
             (List<ExportResult> results, int? ms, string error, bool stopped) = task.Result;
             outcome = new SendOutcome(sent, results, error, stopped);
-            foreach (ExportResult r in results) {
+            for (int i = 0; i < results.Count; i++) {
+                ExportResult r = results[i];
+                // the script answers its updates in order: what was sent for the row, so the log says it
+                ExportUpdate u = i < sent.Count ? sent[i] : null;
                 sender.Info($"  {ExportTable.RowLabel(r.Tab, r.Chapter, r.Cp)}: {r.Status}"
                     + (string.IsNullOrEmpty(r.Band) ? "" : $" [{r.Band}]")
+                    + (u == null ? "" : $" {u.Time.Trim()}" + (u.Timing == null ? "" : $", timing {u.Timing}"))
                     + (string.IsNullOrEmpty(r.Reason) ? "" : $" ({r.Reason})"));
             }
 
@@ -100,7 +117,7 @@ internal static class ExportSend {
         // on every outcome, failed or orphaned too: the sheet may have been
         // written whatever is shown, and EndWrite asks it again
         try {
-            SheetReader.EndWrite(token, sent.Take(posted).ToList(), outcome.Results);
+            SheetReader.EndWrite(token, sent.Take(posted).ToList(), outcome.Results, timedOut);
         } catch (Exception e) {
             sender.Warn("an export's outcome could not be recorded: " + e);
         }

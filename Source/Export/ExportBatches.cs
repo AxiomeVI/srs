@@ -14,6 +14,11 @@ internal static class ExportBatches {
     // about 75 s when every one sets a synced selector
     public const int Size = 25;
 
+    // how long the client waits on a request: Size rows take the script about
+    // 12 s (about 75 s if each sets a synced selector), plus up to 30 s
+    // waiting on its lock, and the rest is margin for a slow day
+    public static readonly TimeSpan WriteTimeout = TimeSpan.FromSeconds(180);
+
     /// Sends the updates in order, each request after the previous answer: the
     /// script refuses a second one while the first holds its lock. Stops at the
     /// first request that fails, with its error. Results pairs with the first

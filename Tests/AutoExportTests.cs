@@ -25,6 +25,9 @@ public sealed class AutoExportTests : IDisposable {
     private volatile bool setting = true;
     private volatile string url = Url;
     private volatile bool screenOpen;
+    // what the host says of a request that failed, and the delay the reader asked for
+    private volatile bool timesOut;
+    private volatile TaskCompletionSource settle;
     private volatile Action<Action> run;
     // the host's four readers, all the worker's: Offer may call none
     private int hostReads;
@@ -55,6 +58,7 @@ public sealed class AutoExportTests : IDisposable {
             Enabled = () => enabled,
             Url = () => url,
             CopyPath = Path.Combine(dir, "sheet-times.json"),
+            Delay = _ => (settle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task,
         });
         ExportSend.Install(new SendHost {
             Post = (_, json) => {
@@ -64,7 +68,8 @@ public sealed class AutoExportTests : IDisposable {
                     posts.Add(answer);
                 }
 
-                return answer.Task;
+                return answer.Task.ContinueWith(task => (task.Result.Item1, task.Result.Item2, timesOut),
+                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             },
             Info = message => { lock (sendInfos) { sendInfos.Add(message); } },
             Warn = _ => { },
@@ -422,6 +427,40 @@ public sealed class AutoExportTests : IDisposable {
         // only an improved row retries it
         AutoExport.Offer([Run("1a", "Crossing", 20)], "1a");
         Assert.Equal(2, Posts);
+    }
+
+    // the script may still be writing: reads of the old cells wake the
+    // evaluation and must neither send nor ask again, and the read asked when
+    // the delay ends is what lets the rows go
+    [Fact]
+    public async Task AfterATimedOutRequestNothingIsSentUntilTheSheetSettles() {
+        string sheet = Sheet((Crossing, "25.000"), (Chasm, "35.000"));
+        await Hold(sheet);
+        timesOut = true;
+        AutoExport.Offer([Run("1a", "Crossing", 20)], "1a");
+        await FailPost(0);
+        Assert.Equal(2, Asked);
+        await AnswerRead(sheet);
+        Assert.True(SheetReader.UnansweredWrite);
+        Assert.Equal(1, Posts);
+        Assert.Equal(2, Asked);
+
+        // an improved row asks once, and that read proves nothing either
+        AutoExport.Offer([Run("1a", "Crossing", 20), Run("1a", "Chasm", 30)], "1a");
+        Assert.Equal(3, Asked);
+        await AnswerRead(sheet);
+        AutoExport.Wake();
+        await Quiet();
+        Assert.True(SheetReader.UnansweredWrite);
+        Assert.Equal(1, Posts);
+        Assert.Equal(3, Asked);
+
+        settle.SetResult();
+        await Until(() => Asked == 4);
+        await AnswerRead(sheet);
+        Assert.False(SheetReader.UnansweredWrite);
+        Assert.Equal(2, Posts);
+        Assert.Equal(new[] { Crossing.Cp, Chasm.Cp }, Sent(1).Select(u => u.Cp));
     }
 
     [Fact]

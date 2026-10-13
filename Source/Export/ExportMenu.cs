@@ -280,7 +280,7 @@ internal static class ExportMenu {
         int failed = self.Wipe == null || !SrsModule.Settings.Enabled ? AutoExport.TakeFailed() : 0;
 
         // a level replaced under an open screen would leave `menu` set and
-        // Open() refusing for the session. Speed Run Tool refuses its own loads
+        // Open() refusing for the session. Speed Run Tool's hotkeys refuse a load
         // while paused, but a console load does it
         if (menu != null && menu.Scene != self) {
             Logger.Log(LogLevel.Warn, LogTag, "the level was replaced under the export screen; closed it");
@@ -511,8 +511,9 @@ internal static class ExportMenu {
     }
 
     private static (string One, string Two) StatusLines() {
-        string error = RemoteBests.Error ?? Dialog.Clean("SRS_EXPORT_UNREAD");
-        string noAnswer = $"{Dialog.Clean("SRS_EXPORT_NO_ANSWER")} {error}";
+        // the error is a sentence of its own: a prefix saying the sheet did
+        // not answer was false for a script out of date or an error 500
+        string noAnswer = RemoteBests.Error ?? Dialog.Clean("SRS_EXPORT_UNREAD");
         string checking = Dialog.Clean("SRS_EXPORT_CHECKING");
         string mayBeWriting = Dialog.Clean("SRS_EXPORT_MAY_BE_WRITING");
         return ExportTable.StatusOf(RemoteBests.Source, SheetReader.IsReading, RemoteBests.Error,
@@ -522,6 +523,7 @@ internal static class ExportMenu {
             ScreenStatus.Writing => (Dialog.Clean("SRS_EXPORT_WRITING"), ""),
             ScreenStatus.WritingChecking => (mayBeWriting, checking),
             ScreenStatus.WritingFailed => (mayBeWriting, noAnswer),
+            ScreenStatus.MayBeWriting => (mayBeWriting, ""),
             ScreenStatus.SavedChecking => (Aged("SRS_EXPORT_SAVED_COPY"), checking),
             ScreenStatus.SavedFailed => (Aged("SRS_EXPORT_SAVED_COPY"), noAnswer),
             ScreenStatus.FreshFailed => (Aged("SRS_EXPORT_SHEET_TIMES"), noAnswer),
