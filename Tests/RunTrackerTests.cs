@@ -502,6 +502,48 @@ public class RunTrackerTests {
         Assert.Empty(t.Open);
     }
 
+    // a TAS played a frame of Start, then stopped: Crossing is the player's
+    [Fact]
+    public void ARowATasPlayedRecordsNothingButStillChains() {
+        Add("Start", "1", "6", setup: StartSetup.CurrentRoom);
+        Add("Crossing", "6", "9b", entry: "5");
+        Add("Chasm", "9b", null, entry: "9");
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.TasPlayed();
+        Assert.Empty(t.RoomEntered("1a", "5", "6", 100, true, false, One));
+        Assert.Equal(["Crossing"], t.Open.Select(r => r.Name));
+
+        Assert.Equal([("Crossing", 200L)], Of(t.RoomEntered("1a", "9", "9b", 300, true, false, One)));
+    }
+
+    // the TAS drives the leave itself: what it set aside is still its
+    [Fact]
+    public void ATasPlayedReachesARowSetAside() {
+        Add("Final", "04", null, endKind: EndKind.ChapterEnd, setup: StartSetup.CurrentRoom);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "04", 0, true, false, _ => true);
+        t.Left(LeaveKind.SaveAndQuit, 50, One);
+        t.TasPlayed();
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "04", 50, true, false, _ => false);
+
+        Assert.Equal(["Final"], t.Open.Select(r => r.Name));
+        Assert.Empty(t.Left(LeaveKind.ChapterEnd, 90, One));
+    }
+
+    // a start waiting for control is timed from control's return, which the
+    // TAS did not play if it had stopped by then
+    [Fact]
+    public void ATasPlayedKeepsAStartWaitingForControl() {
+        RunTracker t = AwakeWaitingForControl();
+        t.TasPlayed();
+        t.ControlReturned("end_0", 130, _ => true);
+
+        Assert.Equal([("Awake", 270L)], Of(t.ChapterTimeStopped(400, One)));
+    }
+
     [Fact]
     public void AMidSegmentSavestateRecordsTheNextSegment() {
         Add("Start", "1", "6", setup: StartSetup.CurrentRoom);

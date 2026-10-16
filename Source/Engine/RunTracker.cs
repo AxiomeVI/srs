@@ -118,6 +118,16 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         pendingRoom = null;
     }
 
+    /// A TAS played this frame: nothing open or set aside can be recorded any
+    /// more, and it still chains, as Disqualify. A start waiting for control is
+    /// kept: it times from the frame control returns, which marks it in turn
+    /// if the TAS is still playing.
+    public void TasPlayed() {
+        foreach (OpenSegment segment in open.Concat(aside)) {
+            segment.Disqualified = true;
+        }
+    }
+
     /// A split's Save and Quit stayed in the level: a Save and Quit may have
     /// been taken without the level reloading, so no open segment can say
     /// whether one happened in it, and neither can a start walked into and

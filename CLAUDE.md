@@ -41,6 +41,7 @@ Le code porte ses justifications en commentaires ; ici, seules celles qui dépas
   - **Quitter le niveau nourrit `Left`** (`Level.OnExit` dans `orig` ; `Completed` qui monte ; SomeSplitButtons, interop ≥ 3, non déclaré : `Loading` d'un Save and Quit, `Split` d'un Return to Map, `NoLoadYet` jusqu'à son `Loading`). Le loader suivant n'est une reprise (`Reentered`) qu'après un Save and Quit, même room et même `Session.Time`, ou sur le spawn carte d'un checkpoint du même chapitre, où la ligne de tier reste. Load, mod éteint, téléport l'oublient.
   - **Fraises** : `Strawberry.OnCollect` nourrit le tracker (moon berry comprise), celles qui suivent passent dans `EndState` ; `RoomMap` lit la carte, **non résolu = jamais enregistrée**.
   - **Sans le SaveLoad de SpeedrunTool, srs n'enregistre rien**.
+  - **Une ligne qu'un TAS a jouée, ne serait-ce qu'une frame, n'est jamais enregistrée** (`TasPlayed` à chaque frame nourrie, `Emit` refuse pendant un TAS) : un TAS peut rendre la main en pleine ligne (QuicksaveMod en rejoue un depuis le début de la room). Le marqueur `Saves/srs/test-auto-export-tas`, en Debug seul, lève les deux pour les tests en jeu.
 - `Source/Export/` — **export des temps de session vers la sheet du joueur**, protocole v3. **Un export part par requêtes de 25 lignes** (`ExportBatches`), une réponse à la fois : le script verrouille.
   - `SessionBests` garde le meilleur **de chaque ligne** (`RunBook`) et sa `SaveAndQuitNote`, par nom, pas par checkpoint jeu (sinon `Hollows Tape RTM` passerait pour `Hollows`), **toute la session, tous chapitres** ; l'écran : PB, côté joué, ordre de `SheetRows.All`, ARB sous leur côté.
   - **L'écriture est un compare-and-swap** : chaque ligne porte la cellule *brute* lue (`PendingUpdate.RemoteCell`, jamais reformatée : la sheet écrit `1:36.9` là où `TimeFormat` rend `1:36.900`), le script la refuse si elle a bougé. `SheetTiming` (game-free) : valeur `Timing`, conversion `FileTime` (buffer de la sheet), liste envoyée ; **jamais de temps dans une cellule `FileTime` sans sa bascule**.
@@ -83,7 +84,7 @@ Le code porte ses justifications en commentaires ; ici, seules celles qui dépas
 
 ## Workflow git
 
-Branche `feature/<nom>` ou `fix/<nom>` depuis `dev`, PR vers `dev`, release = merge dans `main` + bump de version mineure.
+Branche `feature/<nom>` ou `fix/<nom>` depuis `next`, PR vers `next`, release = merge dans `main` + bump de version mineure. `dev` est abandonnée.
 
 ## Reste à faire
 
