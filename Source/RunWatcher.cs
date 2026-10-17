@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Celeste.Mod.SpeedrunTool;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -167,13 +166,15 @@ public static class RunWatcher {
     private static bool observing;
 
     // for the in-game tests, which play their rows by TAS: a Debug build
-    // started with this file in place auto-exports those too
+    // started with this file in place counts those too
 #if DEBUG
-    private static readonly bool testSendsTasRuns =
+    private static readonly bool testCountsTasRuns =
         System.IO.File.Exists(System.IO.Path.Combine(Everest.PathSettings, "srs", "test-auto-export-tas"));
 #else
-    private const bool testSendsTasRuns = false;
+    private const bool testCountsTasRuns = false;
 #endif
+
+    private static bool TasPlaying() => !testCountsTasRuns && TasImports.IsTasActive?.Invoke() == true;
 
     public static void Load() {
         // hook order: see SrsModule.Load
@@ -343,10 +344,21 @@ public static class RunWatcher {
         bool movedAtLoad = Saved.Moved;
         Vector2 spawnAtLoad = Saved.SpawnAt;
 
+        bool tasBefore = TasPlaying();
         frameStart = before;
         inUpdate = true;
         orig(self);
         inUpdate = false;
+
+        // a row a TAS played one frame of is never recorded, whoever ends it:
+        // a TAS may hand control back mid-row (QuicksaveMod replays one from
+        // the room's start). Marked before this frame's closes, which Emit
+        // lets through once the TAS has stopped, and again last, so a row
+        // opened this frame is marked too
+        bool tasFrame = tasBefore || TasPlaying();
+        if (tasFrame) {
+            tracker.TasPlayed();
+        }
 
         Session session = self.Session;
         long after = session.Time;
@@ -551,6 +563,10 @@ public static class RunWatcher {
             .After(false, false, at);
         Saved.SpawnAt = new Vector2(still.X, still.Y);
         Saved.Moved = still.Moved;
+
+        if (tasFrame) {
+            tracker.TasPlayed();
+        }
 
         Saved.Stamp = ++stamp;
         // during 6A's watched fall the rooms passed through are not where the
@@ -805,7 +821,9 @@ public static class RunWatcher {
     }
 
     private static void Emit(Session session, List<SegmentRecord> records) {
-        if (records.Count == 0) {
+        // a row closing while a TAS plays, a collect or a split between two
+        // frames included
+        if (records.Count == 0 || TasPlaying()) {
             return;
         }
 
@@ -818,10 +836,8 @@ public static class RunWatcher {
         }
 
         // the copy is all auto-export takes from the game thread
-        // and it takes no run a TAS played: nobody reviews what it sends
-        if (SessionBests.Record(records, session, !testSendsTasRuns && TasImports.IsTasActive?.Invoke() == true)
-            && SrsModule.Settings.AutoExport) {
-            AutoExport.Offer([.. SessionBests.All.Where(run => !run.ByTas)],
+        if (SessionBests.Record(records, session) && SrsModule.Settings.AutoExport) {
+            AutoExport.Offer([.. SessionBests.All],
                 session == null ? null : SegmentAutoDetect.ScopeOf(session));
         }
 

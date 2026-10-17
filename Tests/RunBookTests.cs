@@ -22,17 +22,6 @@ public class RunBookTests {
         Assert.Equal(Ticks(44), Assert.Single(book.All).Ticks);
     }
 
-    // what auto-export leaves out; a faster run by hand takes the row back
-    [Fact]
-    public void ARunIsMarkedWhenATasPlayedIt() {
-        RunBook book = new();
-        Assert.True(Assert.Single(book.Offer([Record("6a", "Hollows", 45)], byTas: true)).ByTas);
-        Assert.True(Assert.Single(book.All).ByTas);
-
-        Assert.False(Assert.Single(book.Offer([Record("6a", "Hollows", 44)])).ByTas);
-        Assert.False(Assert.Single(book.All).ByTas);
-    }
-
     // equal is no improvement: the export would offer the same time again
     [Fact]
     public void AnEqualTimeDoesNotReplaceTheBest() {
