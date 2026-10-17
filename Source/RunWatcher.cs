@@ -350,6 +350,16 @@ public static class RunWatcher {
         orig(self);
         inUpdate = false;
 
+        // a row a TAS played one frame of is never recorded, whoever ends it:
+        // a TAS may hand control back mid-row (QuicksaveMod replays one from
+        // the room's start). Marked before this frame's closes, which Emit
+        // lets through once the TAS has stopped, and again last, so a row
+        // opened this frame is marked too
+        bool tasFrame = tasBefore || TasPlaying();
+        if (tasFrame) {
+            tracker.TasPlayed();
+        }
+
         Session session = self.Session;
         long after = session.Time;
         string scope = SegmentAutoDetect.ScopeOf(session);
@@ -554,10 +564,7 @@ public static class RunWatcher {
         Saved.SpawnAt = new Vector2(still.X, still.Y);
         Saved.Moved = still.Moved;
 
-        // a row a TAS played one frame of is never recorded, whoever ends it:
-        // a TAS may hand control back mid-row (QuicksaveMod replays one from
-        // the room's start). Last, so a row opened this frame is marked too
-        if (tasBefore || TasPlaying()) {
+        if (tasFrame) {
             tracker.TasPlayed();
         }
 
