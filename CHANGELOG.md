@@ -71,6 +71,7 @@ A beta under its own name, **Speedrun Sheet Beta**, so that the released mod is 
 - **Farewell's two ILs are covered.** A full run of Farewell records `DTS IL` or `No DTS IL`, by the dashes you carry into Singular, timed as the game times the chapter, and exports it to the IL row of your sheet.
 - **C-sides are covered.** A C-side run shows its row above the timer and is exported like any segment. It starts from the chapter's first spawn and ends when the heart stops the timer. It is timed as the game times the chapter, the frame that stops the timer included.
 - **A-side ILs are covered.** A run from a chapter's start to its end records the chapter's IL beside its checkpoints, timed as the game times the chapter, and exports it to the IL row of your sheet. At the end of a full run the rows above the timer show the IL, and Cycle Shown Segment steps back to the last checkpoint.
+- **Cycle Shown Segment brings the rows back.** Once they have hidden, after you walked on past the room where the segment ended, a press shows the last segment again until you leave the room you are in. Further presses step back through the chain as before.
 
 ## v3.7.0 — 2026-08-27 by Axiome
 
