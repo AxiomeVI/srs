@@ -10,7 +10,8 @@ namespace Celeste.Mod.SpeedrunSheet;
 // Two rows above Speed Run Tool's timer: the segment's name, over its time,
 // tier, PB gain and delta to the next tier. Shown until the player leaves
 // RunWatcher.LatestRoom (the room the segment closed in, or the one a
-// re-entry that kept it landed in), and not again on coming back.
+// re-entry that kept it landed in), and not again on coming back. The
+// Previous Segment hotkey calls them back until the player leaves that room.
 public static class TierComparison {
     private static SrsSettings Settings => SrsModule.Settings;
 
@@ -22,6 +23,10 @@ public static class TierComparison {
 
     // the record the player walked away from
     private static int dismissedSerial = -1;
+
+    // the room the rows were called back in, null when they were not: they
+    // hide on leaving it instead of RunWatcher.LatestRoom
+    private static string recalledIn;
 
     // the gold of Speed Run Tool's timer on a best time. Plain text, not its
     // renderer: that one draws decimals at 70 %, unreadable at this size
@@ -64,26 +69,35 @@ public static class TierComparison {
             return;
         }
 
-        // a new record shows itself; the hotkey steps back from it and wraps,
-        // while the rows are up
+        // a new record shows itself; the hotkey steps back from it and wraps
+        // while the rows are up, and calls the latest back while they are not.
+        // A new record ends a recall, or the room it lands by would hide it
         if (RunWatcher.LatestSerial != steppedSerial) {
             steppedSerial = RunWatcher.LatestSerial;
             stepsBack = 0;
+            recalledIn = null;
         }
 
-        if (Hotkeys.Pressed(Hotkeys.PreviousSegment) && drawn && RunWatcher.Attempt.Count > 1) {
-            stepsBack = (stepsBack + 1) % RunWatcher.Attempt.Count;
+        if (Hotkeys.Pressed(Hotkeys.PreviousSegment) && RunWatcher.Attempt.Count > 0) {
+            if (!drawn) {
+                recalledIn = self.Session.Level;
+                dismissedSerial = -1;
+                stepsBack = 0;
+            } else if (RunWatcher.Attempt.Count > 1) {
+                stepsBack = (stepsBack + 1) % RunWatcher.Attempt.Count;
+            }
         }
 
         ComputeTier(self.Session);
     }
 
     // the shown record's row, looked up by name (see SheetBlock.Find), while
-    // the player is still in RunWatcher.LatestRoom
+    // the player is still in RunWatcher.LatestRoom, or in the room of a recall
     private static void ComputeTier(Session session) {
         rows = null;
-        if (session.Level != RunWatcher.LatestRoom) {
+        if (session.Level != (recalledIn ?? RunWatcher.LatestRoom)) {
             dismissedSerial = RunWatcher.LatestSerial;
+            recalledIn = null;
         }
 
         // the held sheet times are the current attempt's only. The attempt
