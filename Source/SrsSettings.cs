@@ -69,6 +69,10 @@ public class SrsSettings : EverestModuleSettings {
     [SettingIgnore]
     public bool ShowDelta { get; set; } = true;
 
+    // the outline of the darkest tier colors, for testers to compare
+    [SettingIgnore]
+    public DarkOutline DarkOutline { get; set; } = DarkOutline.Tint50;
+
     // sends a session best that beats the sheet as soon as its row ends; off by default
     [SettingIgnore]
     public bool AutoExport { get; set; }

@@ -150,4 +150,15 @@ public class TierLineTests {
     [InlineData(0xff, 0xff, 0xff)]
     public void ALightColorKeepsItsBlackOutline(byte r, byte g, byte b) =>
         Assert.False(TierLine.DarkOnBlack(r, g, b));
+
+    [Theory]
+    // Blue 1: the tints step from it to white as Color.Lerp would
+    [InlineData(DarkOutline.Black, 0x00, 0x00, 0x00)]
+    [InlineData(DarkOutline.Tint25, 69, 105, 138)]
+    [InlineData(DarkOutline.Tint50, 131, 155, 177)]
+    [InlineData(DarkOutline.Tint75, 193, 205, 216)]
+    [InlineData(DarkOutline.White, 0xff, 0xff, 0xff)]
+    [InlineData(DarkOutline.Gray, 0x80, 0x80, 0x80)]
+    public void EachDarkOutlineStyleGivesItsColor(DarkOutline style, byte r, byte g, byte b) =>
+        Assert.Equal((r, g, b), TierLine.OutlineOfDark(style, 0x07, 0x37, 0x63));
 }
