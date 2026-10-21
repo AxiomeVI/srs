@@ -210,7 +210,7 @@ public class SegmentRulesTests {
         Assert.Equal(splitInto, SegmentAutoDetect.SplitCheckpoints.GetValueOrDefault(("7a", name)));
     }
 
-    // a Full Clear label says nothing of what the row collects: the whole table, as the owner gave it
+    // a Full Clear label says nothing of what the row collects: the whole table, row by row
     [Theory]
     [InlineData("1a", "FC IL", (int)(Collectibles.Heart | Collectibles.Cassette), 0)]
     [InlineData("2a", "FC Start", (int)(Collectibles.Cassette), 0)]
