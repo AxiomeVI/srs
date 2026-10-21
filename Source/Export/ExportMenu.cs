@@ -278,6 +278,7 @@ internal static class ExportMenu {
         // held back under a wipe, which would cover the popup; taken with the
         // mod off, so a count is dropped then
         int failed = self.Wipe == null || !SrsModule.Settings.Enabled ? AutoExport.TakeFailed() : 0;
+        int written = self.Wipe == null || !SrsModule.Settings.Enabled ? AutoExport.TakeWritten() : 0;
 
         // a level replaced under an open screen would leave `menu` set and
         // Open() refusing for the session. Speed Run Tool's hotkeys refuse a load
@@ -298,9 +299,13 @@ internal static class ExportMenu {
             return;
         }
 
+        // the written count is taken whatever the setting, so switching it on shows
+        // no old send. Never beside the failure: two popups in one frame overlap
         if (failed > 0) {
             PopupMessageUtils.Show(
                 Dialog.Clean("SRS_AUTOEXPORT_FAILED_1") + " " + failed + " " + Dialog.Clean("SRS_AUTOEXPORT_FAILED_2"), null);
+        } else if (written > 0 && SrsModule.Settings.AutoExportPopup) {
+            PopupMessageUtils.Show(Dialog.Clean("SRS_AUTOEXPORT_SENT"), null);
         }
 
         // Hotkeys holds the combo at rest behind the pause menu but not behind
