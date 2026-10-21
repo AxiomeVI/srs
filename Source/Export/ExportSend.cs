@@ -22,6 +22,9 @@ internal readonly record struct SendOutcome(IReadOnlyList<ExportUpdate> Sent,
     /// The rows a player would call not written. A changed row goes again by itself.
     public int NotWritten => Stopped ? 0
         : Sent.Count - Results.Count(r => r.Status is "written" or "unchanged" or "changed");
+
+    /// The rows whose cell now holds the sent time, and did not before.
+    public int Written => Stopped ? 0 : Results.Count(r => r.Status == "written");
 }
 
 /// The one sender of updates to the sheet, for the export screen and for

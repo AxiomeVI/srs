@@ -121,9 +121,13 @@ public sealed class AutoExportTests : IDisposable {
         version = 3,
     });
 
-    private static string Answer(string json, string status = "written") {
+    // one status for every row, or one per row
+    private static string Answer(string json, params string[] statuses) {
         ExportRequest request = JsonSerializer.Deserialize<ExportRequest>(json);
-        var results = request.Updates.Select(u => new { tab = u.Tab, band = u.Band, chapter = u.Chapter, cp = u.Cp, status });
+        var results = request.Updates.Select((u, i) => new {
+            tab = u.Tab, band = u.Band, chapter = u.Chapter, cp = u.Cp,
+            status = statuses.Length == 0 ? "written" : statuses[Math.Min(i, statuses.Length - 1)],
+        });
         return JsonSerializer.Serialize(new { results, ms = 5, version = 3 });
     }
 
@@ -203,9 +207,9 @@ public sealed class AutoExportTests : IDisposable {
     }
 
     // the end of a write raises Changed, whatever the answer
-    private async Task AnswerPost(int index, string status = "written") {
+    private async Task AnswerPost(int index, params string[] statuses) {
         expected++;
-        Post(index).SetResult((Answer(bodies[index], status), null));
+        Post(index).SetResult((Answer(bodies[index], statuses), null));
         await Quiet();
     }
 
@@ -219,6 +223,12 @@ public sealed class AutoExportTests : IDisposable {
     private static async Task<int> Failed(int atLeast) {
         int taken = 0;
         await Until(() => (taken += AutoExport.TakeFailed()) >= atLeast);
+        return taken;
+    }
+
+    private static async Task<int> Written(int atLeast) {
+        int taken = 0;
+        await Until(() => (taken += AutoExport.TakeWritten()) >= atLeast);
         return taken;
     }
 
@@ -320,9 +330,48 @@ public sealed class AutoExportTests : IDisposable {
         Assert.Equal(1, Posts);
         Assert.True(RemoteBests.TryGet(Crossing, out RemoteRow held));
         Assert.Equal(update.Time, held.Time);
+        Assert.Equal(1, await Written(1));
         await Task.Delay(50);
         Assert.Equal(0, AutoExport.TakeFailed());
+        Assert.Equal(0, AutoExport.TakeWritten());
         Assert.DoesNotContain(Infos, line => line.Contains(Url));
+    }
+
+    // the player is told of the failure, never that it went through
+    [Fact]
+    public async Task APartlyWrittenSendCountsAsFailedOnly() {
+        await Hold(Sheet((Crossing, "25.000"), (Chasm, "35.000")));
+        AutoExport.Offer([Run("1a", "Crossing", 20), Run("1a", "Chasm", 30)], "1a");
+        Assert.Equal(2, Sent(0).Count);
+        await AnswerPost(0, "written", "notFound");
+
+        Assert.Equal(1, await Failed(1));
+        await Task.Delay(50);
+        Assert.Equal(0, AutoExport.TakeWritten());
+    }
+
+    // the changed row goes again by itself: that send is the one to show
+    [Fact]
+    public async Task ASendWithAChangedRowCountsNothingWritten() {
+        await Hold(Sheet((Crossing, "25.000"), (Chasm, "35.000")));
+        AutoExport.Offer([Run("1a", "Crossing", 20), Run("1a", "Chasm", 30)], "1a");
+        await AnswerPost(0, "written", "changed");
+
+        await Task.Delay(50);
+        Assert.Equal(0, AutoExport.TakeWritten());
+        Assert.Equal(0, AutoExport.TakeFailed());
+    }
+
+    // the cell already held the time: nothing was written
+    [Fact]
+    public async Task AnUnchangedSendCountsNothingWritten() {
+        await Hold(Sheet((Crossing, "25.000")));
+        AutoExport.Offer([Run("1a", "Crossing", 20)], "1a");
+        await AnswerPost(0, "unchanged");
+
+        await Task.Delay(50);
+        Assert.Equal(0, AutoExport.TakeWritten());
+        Assert.Equal(0, AutoExport.TakeFailed());
     }
 
     [Fact]
