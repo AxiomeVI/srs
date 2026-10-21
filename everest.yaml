@@ -1,8 +1,11 @@
 - Name: Speedrun Sheet
-  Version: 1.1.0
-  DLL: srs.dll
+  Version: 3.7.0
+  DLL: bin/srs.dll
   Dependencies:
     - Name: Everest
       Version: 1.6397
     - Name: SpeedrunTool
       Version: 3.27.17
+  OptionalDependencies:
+    - Name: SomeSplitButtons
+      Version: 1.4.1

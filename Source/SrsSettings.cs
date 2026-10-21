@@ -1,41 +1,87 @@
-using Microsoft.Xna.Framework.Input;
-
 namespace Celeste.Mod.SpeedrunSheet;
 
 public class SrsSettings : EverestModuleSettings {
-    // the "Celeste Any% Standards CP's" tab (gid 276158492): every checkpoint
-    // of the any% route, grouped by chapter
-    public const string DefaultSheetUrl =
-        "https://docs.google.com/spreadsheets/d/1WwqnaloO6I4gHcyzF3odz6n5LnSDTveS34BY-ljORuI/edit?gid=276158492";
-
-    // pre-v0.2.0 default: the "Standards IL's" tab (whole chapters only);
-    // settings files still carrying it are migrated in SrsModule.LoadSettings
-    public const string LegacySheetUrl =
-        "https://docs.google.com/spreadsheets/d/1WwqnaloO6I4gHcyzF3odz6n5LnSDTveS34BY-ljORuI/edit?gid=639470957";
-
-    // full Google Sheets edit URL (spreadsheet id + gid are extracted from it);
-    // not editable in-game — change it in Saves/modsettings-srs.celeste if the sheet moves
+    // master switch: off, the mod is inert and Mod Options shows only this
+    // toggle. Built by hand in ModMenu, whose Change handler folds the rest
     [SettingIgnore]
-    public string SheetUrl { get; set; } = DefaultSheetUrl;
+    public bool Enabled { get; set; } = true;
 
-    // checkpoint selected in Mod Options, addressed by name so the selection
-    // survives sheet re-imports; empty until first picked
+    // the Standards tabs srs reads (StandardsTabs), as full edit URLs, editable
+    // only in the settings file. The property names stay: they are the stored
+    // keys
     [SettingIgnore]
-    public string SelectedChapter { get; set; } = "";
+    public string ASidesUrl { get; set; } = StandardsTabs.DefaultUrl(StandardsTab.ASides);
 
     [SettingIgnore]
-    public string SelectedCheckpoint { get; set; } = "";
+    public string BSidesUrl { get; set; } = StandardsTabs.DefaultUrl(StandardsTab.BSides);
 
-    // tier row drawn under the room timer once it completes; auto-generated
-    // menu toggle + rebindable hotkey (handled in TierComparison)
+    [SettingIgnore]
+    public string FarewellUrl { get; set; } = StandardsTabs.DefaultUrl(StandardsTab.Farewell);
+
+    [SettingIgnore]
+    public string CSidesUrl { get; set; } = StandardsTabs.DefaultUrl(StandardsTab.CSides);
+
+    [SettingIgnore]
+    public string ArbUrl { get; set; } = StandardsTabs.DefaultUrl(StandardsTab.Arb);
+
+    [SettingIgnore]
+    public string FcUrl { get; set; } = StandardsTabs.DefaultUrl(StandardsTab.Fc);
+
+    internal string UrlOf(StandardsTab tab) => tab switch {
+        StandardsTab.ASides => ASidesUrl,
+        StandardsTab.BSides => BSidesUrl,
+        StandardsTab.Farewell => FarewellUrl,
+        StandardsTab.CSides => CSidesUrl,
+        StandardsTab.Arb => ArbUrl,
+        StandardsTab.Fc => FcUrl,
+        _ => throw new System.ArgumentOutOfRangeException(nameof(tab)),
+    };
+
+    internal void SetUrl(StandardsTab tab, string url) {
+        switch (tab) {
+            case StandardsTab.ASides: ASidesUrl = url; break;
+            case StandardsTab.BSides: BSidesUrl = url; break;
+            case StandardsTab.Farewell: FarewellUrl = url; break;
+            case StandardsTab.CSides: CSidesUrl = url; break;
+            case StandardsTab.Arb: ArbUrl = url; break;
+            case StandardsTab.Fc: FcUrl = url; break;
+            default: throw new System.ArgumentOutOfRangeException(nameof(tab));
+        }
+    }
+
+    // the tier's name in the rows drawn above the room timer
+    [SettingIgnore]
     public bool ShowTier { get; set; } = true;
 
-    [DefaultButtonBinding(0, Keys.None)]
-    public ButtonBinding ToggleShowTier { get; set; }
-
-    // the played checkpoint drives the selection (SegmentAutoDetect); the two
-    // sliders become a manual override when turned off. Not auto-generated:
-    // SegmentSelector builds the toggle itself so it can grey out the sliders
+    // the rows' other parts ("1a Crossing", "14.875", "PB -0.214",
+    // "+0.140 to Purple 1"); menu toggles only
     [SettingIgnore]
-    public bool AutoDetect { get; set; } = true;
+    public bool ShowCheckpointName { get; set; } = true;
+
+    [SettingIgnore]
+    public bool ShowTime { get; set; } = true;
+
+    [SettingIgnore]
+    public bool ShowPbImprovement { get; set; } = true;
+
+    [SettingIgnore]
+    public bool ShowDelta { get; set; } = true;
+
+    // sends a session best that beats the sheet as soon as its row ends; off by default
+    [SettingIgnore]
+    public bool AutoExport { get; set; }
+
+    // local date the URL was last set, "yyyy-MM-dd". Display only: it lets the
+    // status line say "set <date>" without showing the URL
+    [SettingIgnore]
+    public string ExportUrlSetOn { get; set; } = "";
+
+    // opens the export screen; unbound by default
+    [SettingIgnore]
+    public ButtonBinding OpenExportMenu { get; set; } = new();
+
+    // steps the rows above the timer back through the attempt's segments;
+    // unbound by default
+    [SettingIgnore]
+    public ButtonBinding PreviousSegment { get; set; } = new();
 }

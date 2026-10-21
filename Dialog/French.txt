@@ -1,15 +1,98 @@
-# srs — Speedrun Sheet
+# srs: Speedrun Sheet
 
 # Mod Options
 MODOPTIONS_SRS_TITLE=     Speedrun Sheet
+MODOPTIONS_SRS_ENABLED=   Activé
 MODOPTIONS_SRS_SHOWTIER=  Afficher le palier
-MODOPTIONS_SRS_TOGGLESHOWTIER= Afficher/masquer le palier
-SRS_AUTO_DETECT=          Détection auto du checkpoint
-SRS_CHAPTER=              Chapitre
-SRS_CHECKPOINT=           Checkpoint
-SRS_UPDATE_SHEET=         Mettre à jour les données de la sheet
+MODOPTIONS_SRS_PREVIOUSSEGMENT= Faire défiler le segment affiché
+MODOPTIONS_SRS_PREVIOUSSEGMENT_DESC= Réaffiche le dernier segment, puis remonte d'un segment par appui
+MODOPTIONS_SRS_GROUP_DISPLAY= Affichage
+MODOPTIONS_SRS_GROUP_YOURSHEET= Votre sheet
+MODOPTIONS_SRS_SHOWCHECKPOINTNAME= Afficher le nom du checkpoint
+MODOPTIONS_SRS_SHOWTIME= Afficher le temps
+MODOPTIONS_SRS_SHOWPBIMPROVEMENT= Afficher le gain sur le PB
+MODOPTIONS_SRS_SHOWPBIMPROVEMENT_DESC= Compare au temps de votre sheet : nécessite l'URL de sa web app
+MODOPTIONS_SRS_SHOWDELTA= Afficher le delta au palier suivant
+MODOPTIONS_SRS_OPENEXPORTMENU= Ouvrir l'export vers la sheet
+MODOPTIONS_SRS_AUTOEXPORT= Export automatique sur PB
+SRS_UPDATE_STANDARDS=     Mettre à jour les standards
 SRS_UPDATING=             Mise à jour...
-SRS_UPDATE_OK=            Sheet mise à jour
+SRS_UPDATE_OK=            Standards mis à jour
 SRS_UPDATE_FAIL=          Échec de la mise à jour (voir log.txt)
-SRS_STATUS_NONE=          Aucune donnée — lancer une mise à jour pour les télécharger
-SRS_STATUS_LOADED=        Segments chargés
+SRS_STATUS_NONE=          Aucun standard, lancer une mise à jour pour les télécharger
+SRS_STATUS_LOADED=        Dernière mise à jour :
+SRS_STATUS_UPDATE_FAILED= Échec de la mise à jour, voir log.txt.
+SRS_STATUS_STILL_USING=   Standards utilisés : ceux du
+
+# Keybinds
+SRS_KEYBINDS=             Raccourcis
+SRS_KEYBIND_CLEAR_HINT=   Journal ou Suppr pour effacer la ligne choisie
+# {0} is the seconds left. CelesteHotkeys reads this line raw, so the placeholder survives
+SRS_KEYBIND_TIMEOUT=      Annulation dans {0}s - Échap pour annuler maintenant
+SRS_KEYBIND_COMBO_HINT=   Maintenir toute la combinaison, puis relâcher pour la lier (4 touches max)
+SRS_KEYBIND_PAGE_COMBO_HINT= Un raccourci peut combiner jusqu'à {0} touches, tenues ensemble
+
+# Export vers la sheet
+SRS_EXPORT_TITLE=           Export vers la practice sheet
+SRS_EXPORT_NOTHING=         Rien à exporter : aucun segment couru cette session
+SRS_EXPORT_NONE_TICKED=         Aucune ligne cochée
+SRS_EXPORT_NEEDS_URL=         Définir d'abord l'URL de la web app de la sheet dans les options du mod
+SRS_AUTOEXPORT_FAILED_1=Export automatique :
+SRS_AUTOEXPORT_FAILED_2=ligne(s) non écrite(s). Voir l'écran d'export.
+SRS_EXPORT_LOADING=         Chargement des données de la sheet...
+SRS_EXPORT_WRITING=       Écriture dans la sheet...
+SRS_EXPORT_UNREAD=        Lecture de la sheet impossible.
+SRS_EXPORT_CONFIRM=         Exporter la sélection
+SRS_EXPORT_CANCEL=          Annuler
+SRS_EXPORT_CLOSE=           Fermer
+SRS_EXPORT_DONE=            Export terminé
+SRS_EXPORT_URL_FORGET=      Oublier l'URL de la web app de la sheet
+SRS_EXPORT_URL_FROM_CLIPBOARD=Coller l'URL de la web app de la sheet
+SRS_EXPORT_URL_REPLACE_FROM_CLIPBOARD=Coller une autre URL de web app de sheet
+SRS_EXPORT_URL_CLIPBOARD_EMPTY=      Presse-papiers vide. Copier d'abord l'URL en /exec.
+SRS_EXPORT_URL_CLIPBOARD_INVALID=      Ce n'est pas une URL de web app de sheet. Elle doit commencer par https et finir en /exec.
+SRS_EXPORT_URL_CHECKING=      Interrogation de la sheet...
+SRS_EXPORT_URL_CHECK_OK=      La sheet a répondu.
+SRS_EXPORT_URL_CHECK_REFUSED=      Le script d'export a répondu par une erreur :
+SRS_EXPORT_URL_CHECK_NOT_SHEET=      Quelque chose a répondu, mais pas le script d'export. Vérifier le déploiement.
+SRS_EXPORT_URL_SAVE_FAILED=      Impossible d'enregistrer l'URL. La raison est dans log.txt.
+SRS_EXPORT_URL_FORGET_FAILED=      Impossible d'oublier l'URL. La raison est dans log.txt.
+SRS_EXPORT_URL_DETAIL=      URL de la web app de la sheet définie :
+SRS_EXPORT_URL_HINT=        Copier d'abord l'URL de la web app du script de la sheet. Elle finit en /exec.
+SRS_EXPORT_URL_HINT_GUIDE=  Voir la section FAQ du Master Sheet Template pour la mettre en place
+
+# Erreurs. Pas de placeholders {0} : ce qui porte une valeur est composé en code.
+SRS_EXPORT_ERR_STATUS=      La sheet a répondu par l'erreur
+SRS_EXPORT_ERR_TIMEOUT=     Pas de réponse à temps. La sheet a peut-être quand même été écrite : la vérifier avant de réessayer.
+SRS_EXPORT_ERR_READ_TIMEOUT= Pas de réponse de la sheet à temps.
+SRS_EXPORT_ERR_UNREACHABLE= Sheet injoignable. La raison est dans log.txt.
+SRS_EXPORT_ERR_UNREADABLE=  Réponse illisible de la sheet :
+SRS_EXPORT_ERR_EMPTY=       Réponse vide de la sheet.
+SRS_EXPORT_ERR_NO_ROWS=     La sheet n'a renvoyé aucune ligne.
+SRS_EXPORT_ERR_LOGIN_PAGE=  Page web reçue au lieu de données. Vérifier le niveau d'accès du déploiement : il doit être « Anyone ».
+SRS_EXPORT_ERR_OUT_OF_DATE= Le script de la sheet n'est plus à jour. Le recopier depuis le template et publier une nouvelle version du déploiement.
+SRS_EXPORT_ERR_MOD_OUT_OF_DATE= Le script de la sheet est plus récent que cette version de srs. Mettre srs à jour.
+
+# SESSION et DELTA sont les mots employés en français aussi ; traduits à
+# l'identique, mais passés par une clé comme le reste.
+SRS_EXPORT_COL_SHEET=       SHEET
+SRS_EXPORT_COL_ADJUSTED=    ADJUSTED
+SRS_EXPORT_COL_LOCAL=       SESSION
+SRS_EXPORT_COL_DELTA=       DELTA
+
+SRS_EXPORT_STATUS_NOTFOUND= ligne introuvable
+SRS_EXPORT_STATUS_AMBIGUOUS= plusieurs lignes correspondent
+SRS_EXPORT_STATUS_REFUSED=  refusé
+SRS_EXPORT_STATUS_CHANGED=  sheet modifiée, non écrit
+SRS_EXPORT_DUPLICATE=       à deux endroits de la sheet
+SRS_EXPORT_SUMMARY_WRITTEN= Écrit :
+SRS_EXPORT_SUMMARY_UNCHANGED= Déjà sur la sheet :
+SRS_EXPORT_SUMMARY_MORE= de plus, non écrit : voir log.txt
+SRS_EXPORT_SAVED_COPY=      Copie enregistrée
+SRS_EXPORT_SHEET_TIMES=     Temps de la sheet
+SRS_EXPORT_CHECKING=        Vérification de la sheet...
+SRS_EXPORT_MAY_BE_WRITING=  La sheet est peut-être encore en train d'écrire.
+SRS_EXPORT_URL_CHECK_NO_ROWS= La sheet a répondu, mais sans aucune des lignes qu'écrit srs. Vérifier ses en-têtes Time.
+SRS_AGE_MINUTES=            min
+SRS_AGE_HOURS=              h
+SRS_AGE_DAYS=               j

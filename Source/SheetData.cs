@@ -4,41 +4,113 @@ using System.Globalization;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
-// parsed practice sheet: blocks of segments, each block with its own header of
-// tier columns ("Hidden", "WR", "Gold", "Pink", "Purple 1", ... "Unranked")
+// parsed practice sheet: one block of segments merged from the Standards tabs
 public class SheetData {
-    public readonly List<SheetBlock> Blocks = [];
+    /// The one block Parse builds, the segments of every tab merged under
+    /// one header; null when nothing parsed.
+    public SheetBlock Block { get; private set; }
 
-    public int SegmentCount {
-        get {
-            int count = 0;
-            foreach (SheetBlock block in Blocks) {
-                count += block.Segments.Count;
+    /// The SheetRows keys none of the parsed tabs had: how a row the sheet
+    /// renamed gets noticed. Covers only what was given: the rows of a tab left
+    /// out of the parse are all here.
+    public readonly List<(string SheetChapter, string Label)> MissingRows = [];
+
+    public int SegmentCount => Block?.Segments.Count ?? 0;
+
+    /// The tier a time reaches: the first column, in sheet order, whose
+    /// threshold the time is strictly under, and "Unranked" past every one.
+    /// The WR column is a reference, not a tier: Gold is the best one, and
+    /// some WR cells are slower than their Gold. A zero threshold (Hidden) and
+    /// an empty cell never match.
+    internal static string TierOf(List<string> columns, List<TimeSpan?> thresholds, TimeSpan time) {
+        for (int i = 0; i < thresholds.Count && i < columns.Count; i++) {
+            if (Ranks(columns[i], thresholds[i]) && time < thresholds[i]) {
+                return columns[i];
             }
-
-            return count;
         }
+
+        return Unranked;
     }
 
-    // the block whose segments are individual checkpoints (the selectable ones);
-    // falls back to the first block for chapter-only sheets, where each segment
-    // is its own single-checkpoint chapter
-    public SheetBlock CheckpointBlock {
-        get {
-            foreach (SheetBlock block in Blocks) {
-                if (block.HasCheckpoints) {
-                    return block;
+    internal const string Unranked = "Unranked";
+
+    /// The tier the smallest gain reaches from `tier`, with its threshold: the
+    /// slowest threshold among the earlier tiers. For Unranked, the slowest of
+    /// all. Null when nothing is faster, as from Gold.
+    internal static (string Column, TimeSpan Threshold)? NextTier(
+        List<string> columns, List<TimeSpan?> thresholds, string tier) {
+        int count = Math.Min(columns.Count, thresholds.Count);
+        int before = tier == Unranked ? count : columns.IndexOf(tier);
+        (string Column, TimeSpan Threshold)? next = null;
+        for (int i = 0; i < before; i++) {
+            if (Ranks(columns[i], thresholds[i])
+                && (next == null || thresholds[i] > next.Value.Threshold)) {
+                next = (columns[i], thresholds[i]!.Value);
+            }
+        }
+
+        return next;
+    }
+
+    private static bool Ranks(string column, TimeSpan? threshold) =>
+        column != "WR" && column != Unranked && threshold > TimeSpan.Zero;
+
+    // never throws on malformed content: an unparseable cell is a null time; a
+    // row outside any block or off the SheetRows allowlist is skipped, and so
+    // is a tab missing or blank. The tabs merge into one block in
+    // StandardsTabs' order, under the header of the first tab that has one
+    public static SheetData Parse(IReadOnlyDictionary<StandardsTab, string> csvByTab) {
+        SheetData data = new();
+        SheetBlock merged = null;
+        HashSet<(StandardsTab, string, string)> imported = [];
+
+        foreach (StandardsTabInfo tab in StandardsTabs.All) {
+            if (!csvByTab.TryGetValue(tab.Tab, out string csv) || string.IsNullOrWhiteSpace(csv)) {
+                continue;
+            }
+
+            foreach (SheetBlock raw in ParseBlocks(csv, tab.ImplicitChapter)) {
+                if (merged == null) {
+                    merged = new SheetBlock(raw.TierStart, hasCheckpoints: true);
+                    merged.Columns.AddRange(raw.Columns);
+                    data.Block = merged;
+                }
+
+                foreach (SheetSegment segment in raw.Segments) {
+                    if (SheetRows.TryRead(tab.Tab, segment.Chapter, segment.Name, out SheetRow row)) {
+                        imported.Add((tab.Tab, segment.Chapter, segment.Name));
+                        merged.Segments.Add(new SheetSegment(row.Scope, row.Name,
+                            Realigned(segment.Times, merged.Columns.Count)));
+                    }
                 }
             }
-
-            return Blocks.Count > 0 ? Blocks[0] : null;
         }
+
+        foreach (SheetRow row in SheetRows.All) {
+            if (!imported.Contains((row.Tab, row.SheetChapter, row.Label))) {
+                data.MissingRows.Add((row.SheetChapter, row.Label));
+            }
+        }
+
+        return data;
     }
 
-    // never throws on malformed content: unparseable cells become null times,
-    // rows outside any block are skipped
-    public static SheetData Parse(string csvText) {
-        SheetData data = new();
+    // one segment's times, padded or cut to the merged block's columns: Times
+    // must stay indexable by Columns, whatever the width of the row's own tab
+    private static List<TimeSpan?> Realigned(List<TimeSpan?> times, int columns) {
+        List<TimeSpan?> aligned = new(columns);
+        for (int i = 0; i < columns; i++) {
+            aligned.Add(i < times.Count ? times[i] : null);
+        }
+
+        return aligned;
+    }
+
+    // the raw pass: the CSV's blocks of segments, one per header row, under the
+    // sheet's own names (internal for the allowlist tests). implicitChapter is
+    // for the Farewell tab, which has no Chapter column
+    internal static List<SheetBlock> ParseBlocks(string csvText, string implicitChapter) {
+        List<SheetBlock> blocks = [];
         SheetBlock currentBlock = null;
         string currentChapter = null;
 
@@ -48,11 +120,11 @@ public class SheetData {
             }
 
             // a header row introduces a new block: first cell is the block title
-            // ("Chapter", "Chapter Times"), then an optional "Checkpoint" column,
-            // then the tier column labels
+            // ("Chapter", "Chapter Times (CP)"), then an optional "Checkpoint"
+            // column, then the tier column labels
             int tierStart = TierStart(row);
             if (tierStart > 0) {
-                currentBlock = new SheetBlock(row[0].Trim(), tierStart, row[1].Trim() == "Checkpoint");
+                currentBlock = new SheetBlock(tierStart, row[1].Trim() == "Checkpoint");
                 currentChapter = null;
                 for (int i = tierStart; i < row.Length; i++) {
                     string label = row[i].Trim();
@@ -61,7 +133,7 @@ public class SheetData {
                     }
                 }
 
-                data.Blocks.Add(currentBlock);
+                blocks.Add(currentBlock);
                 continue;
             }
 
@@ -80,7 +152,7 @@ public class SheetData {
                 continue;
             }
 
-            SheetSegment segment = new(currentChapter, name);
+            SheetSegment segment = new(implicitChapter ?? currentChapter, name);
             for (int i = currentBlock.TierStart; i < currentBlock.TierStart + currentBlock.Columns.Count; i++) {
                 segment.Times.Add(i < row.Length ? TryParseTime(row[i]) : null);
             }
@@ -88,61 +160,7 @@ public class SheetData {
             currentBlock.Segments.Add(segment);
         }
 
-        Normalize(data);
-        return data;
-    }
-
-    // sheet-specific cleanup of the raw rows, applied after parsing (folding
-    // needs the whole block: when "6a" is read, the "Route" chapters that make
-    // it a fold have not been reached yet):
-    // - "Wake Up" rows time the wake-up animation, not a checkpoint
-    // - "<X>a Route"/"<X>b Route" chapters are the two halves of one route
-    //   choice; they and the shared bare "<X>a"/"<X>b" chapter before them are
-    //   folded into a single "<X>a/b" chapter, the layout the sheet itself
-    //   uses for 5a/b, each segment remembering its Side
-    // - the chapter echoed in checkpoint names ("1a Start" -> "Start") is
-    //   dropped; in folded chapters raw side prefixes ("6a Start", "6b Start")
-    //   never match the "<X>a/b" chapter name and survive, matching 5a/b
-    // - names shared by both sides of a fold get their side back
-    //   ("6a Rock Bottom"/"6b Rock Bottom") so (chapter, name) stays a unique
-    //   address
-    private static void Normalize(SheetData data) {
-        foreach (SheetBlock block in data.Blocks) {
-            block.Segments.RemoveAll(segment => segment.Name == "Wake Up");
-
-            // raw chapter -> side ("6a Route" -> "6a", plus bare "6a" -> "6a")
-            Dictionary<string, string> folds = new();
-            foreach (SheetSegment segment in block.Segments) {
-                if (segment.Chapter.EndsWith("a Route") || segment.Chapter.EndsWith("b Route")) {
-                    string side = segment.Chapter[..^" Route".Length];
-                    folds[segment.Chapter] = side;
-                    folds[side] = side;
-                }
-            }
-
-            foreach (SheetSegment segment in block.Segments) {
-                if (folds.TryGetValue(segment.Chapter, out string side)) {
-                    segment.Side = side;
-                    segment.Chapter = side[..^1] + "a/b";
-                }
-
-                if (segment.Name.StartsWith(segment.Chapter + " ", StringComparison.Ordinal)) {
-                    segment.Name = segment.Name[(segment.Chapter.Length + 1)..];
-                }
-            }
-
-            Dictionary<string, int> counts = new();
-            foreach (SheetSegment segment in block.Segments) {
-                string key = segment.Chapter + "\n" + segment.Name;
-                counts[key] = counts.GetValueOrDefault(key) + 1;
-            }
-
-            foreach (SheetSegment segment in block.Segments) {
-                if (segment.Side != null && counts[segment.Chapter + "\n" + segment.Name] > 1) {
-                    segment.Name = segment.Side + " " + segment.Name;
-                }
-            }
-        }
+        return blocks;
     }
 
     // header rows are marked by the fixed first tier columns "Hidden","WR",
@@ -168,25 +186,41 @@ public class SheetData {
         return true;
     }
 
+    private const double SecondsPerDay = 24 * 60 * 60;
+
     // accepts the sheet's mixed formats: "28", "28.1", "00:56", "1:05.5", "24:06.802"
     public static TimeSpan? TryParseTime(string cell) {
-        string text = cell.Trim();
-        if (text.Length == 0) {
+        // no cell at all, which the export asks about, parses like an empty one
+        if (string.IsNullOrWhiteSpace(cell)) {
             return null;
         }
+
+        string text = cell.Trim();
 
         string[] parts = text.Split(':');
         if (parts.Length > 3) {
             return null;
         }
 
+        // past the leading field, each one counts minutes or seconds and stays
+        // under 60 ("1:75" is a typo, not 2:15); only the seconds carry a
+        // fraction. NaN and Infinity parse whatever the style
         double totalSeconds = 0;
-        foreach (string part in parts) {
-            if (!double.TryParse(part, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out double value) || value < 0) {
+        for (int i = 0; i < parts.Length; i++) {
+            bool last = i == parts.Length - 1;
+            NumberStyles style = last ? NumberStyles.AllowDecimalPoint : NumberStyles.None;
+            if (!double.TryParse(parts[i], style, CultureInfo.InvariantCulture, out double value)
+                || !double.IsFinite(value) || value < 0 || (i > 0 && value >= 60)) {
                 return null;
             }
 
             totalSeconds = totalSeconds * 60 + value;
+        }
+
+        // a number this large overflows the ticks, and no cell of a day or more
+        // is a segment time
+        if (totalSeconds >= SecondsPerDay) {
+            return null;
         }
 
         // via ticks: TimeSpan.FromSeconds rounds to milliseconds with double
@@ -195,52 +229,35 @@ public class SheetData {
     }
 }
 
-public class SheetBlock(string name, int tierStart, bool hasCheckpoints) {
-    public readonly string Name = name;
+public class SheetBlock(int tierStart, bool hasCheckpoints) {
     // column index of the first tier ("Hidden"); segment times start there too
     public readonly int TierStart = tierStart;
     // true when segments are individual checkpoints grouped under a chapter,
-    // false when each segment is a whole chapter (IL layout, "Chapter Times")
+    // false when each segment is a whole chapter ("Chapter Times" blocks)
     public readonly bool HasCheckpoints = hasCheckpoints;
     public readonly List<string> Columns = [];
     public readonly List<SheetSegment> Segments = [];
 
-    // distinct chapters in sheet order ("Prologue", "1a", … "6a Route", …)
-    public List<string> Chapters() {
-        List<string> chapters = [];
+    /// The segment of that chapter and name, or null. Callers address segments
+    /// by name, never by reference: SheetImporter.Data is reassigned from a
+    /// worker, and the new instances are not equal to the old ones.
+    public SheetSegment Find(string chapter, string name) {
         foreach (SheetSegment segment in Segments) {
-            if (!chapters.Contains(segment.Chapter)) {
-                chapters.Add(segment.Chapter);
+            if (segment.Chapter == chapter && segment.Name == name) {
+                return segment;
             }
         }
 
-        return chapters;
-    }
-
-    // checkpoint names repeat across chapters ("Start" in nearly all of
-    // them), so checkpoints are always addressed by (chapter, name)
-    public List<SheetSegment> Checkpoints(string chapter) {
-        List<SheetSegment> checkpoints = [];
-        foreach (SheetSegment segment in Segments) {
-            if (segment.Chapter == chapter) {
-                checkpoints.Add(segment);
-            }
-        }
-
-        return checkpoints;
+        return null;
     }
 }
 
-public class SheetSegment(string chapter, string name) {
-    // owning chapter; equals Name in chapter-only blocks.
-    // Chapter and Name are mutable: Normalize rewrites them after parsing
-    public string Chapter = chapter;
-    public string Name = name;
-    // game side ("6a"/"6b") for segments folded into an "<X>a/b" chapter,
-    // null elsewhere — this is what maps a folded segment back to an AreaKey
-    public string Side;
+public class SheetSegment(string chapter, string name, List<TimeSpan?> times = null) {
+    // the scope in the merged block, the sheet's chapter cell in a raw one
+    public readonly string Chapter = chapter;
+    public readonly string Name = name;
     // aligned with the owning block's Columns; null = empty or unparseable cell
-    public readonly List<TimeSpan?> Times = [];
+    public readonly List<TimeSpan?> Times = times ?? [];
 }
 
 // minimal RFC 4180 parser: quoted fields, "" escapes, \r\n or \n line ends

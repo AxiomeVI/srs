@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <AssemblyName>srs.Tests</AssemblyName>
+        <TargetFramework>net8.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <RootNamespace>Celeste.Mod.SpeedrunSheet.Tests</RootNamespace>
+        <IsPackable>false</IsPackable>
+        <!-- the test assembly compiles the game-free sources directly instead of
+             referencing srs.dll, so no Celeste/SpeedrunTool references are
+             needed here (and internal members stay reachable from the tests) -->
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="*.cs" />
+        <Compile Include="../Source/AtomicFile.cs" Link="Source/AtomicFile.cs" />
+        <Compile Include="../Source/SheetData.cs" Link="Source/SheetData.cs" />
+        <Compile Include="../Source/TierLine.cs" Link="Source/TierLine.cs" />
+        <Compile Include="../Source/SheetUrls.cs" Link="Source/SheetUrls.cs" />
+        <Compile Include="../Source/SegmentAutoDetect.Names.cs" Link="Source/SegmentAutoDetect.Names.cs" />
+        <Compile Include="../Source/Export/SheetLabels.cs" Link="Source/Export/SheetLabels.cs" />
+        <Compile Include="../Source/SheetRows.cs" Link="Source/SheetRows.cs" />
+        <Compile Include="../Source/StandardsTabs.cs" Link="Source/StandardsTabs.cs" />
+        <Compile Include="../Source/Export/ExportProtocol.cs" Link="Source/Export/ExportProtocol.cs" />
+        <Compile Include="../Source/Export/ExportBatches.cs" Link="Source/Export/ExportBatches.cs" />
+        <Compile Include="../Source/Export/TimeFormat.cs" Link="Source/Export/TimeFormat.cs" />
+        <Compile Include="../Source/Export/SheetTiming.cs" Link="Source/Export/SheetTiming.cs" />
+        <Compile Include="../Source/Export/PendingUpdate.cs" Link="Source/Export/PendingUpdate.cs" />
+        <Compile Include="../Source/Export/ExportSend.cs" Link="Source/Export/ExportSend.cs" />
+        <Compile Include="../Source/Export/SendLedger.cs" Link="Source/Export/SendLedger.cs" />
+        <Compile Include="../Source/Export/RemoteBests.cs" Link="Source/Export/RemoteBests.cs" />
+        <Compile Include="../Source/Export/SheetCopy.cs" Link="Source/Export/SheetCopy.cs" />
+        <Compile Include="../Source/Export/SheetReader.cs" Link="Source/Export/SheetReader.cs" />
+        <Compile Include="../Source/Export/RunBook.cs" Link="Source/Export/RunBook.cs" />
+        <Compile Include="../Source/Export/ExportSource.cs" Link="Source/Export/ExportSource.cs" />
+        <Compile Include="../Source/Export/ExportTable.cs" Link="Source/Export/ExportTable.cs" />
+        <Compile Include="../Source/Export/AutoExport.cs" Link="Source/Export/AutoExport.cs" />
+        <Compile Include="../Source/Engine/SegmentRule.cs" Link="Source/Engine/SegmentRule.cs" />
+        <Compile Include="../Source/Engine/BerrySet.cs" Link="Source/Engine/BerrySet.cs" />
+        <Compile Include="../Source/Engine/RowTraits.cs" Link="Source/Engine/RowTraits.cs" />
+        <Compile Include="../Source/Engine/SegmentRules.cs" Link="Source/Engine/SegmentRules.cs" />
+        <Compile Include="../Source/Engine/RunTracker.cs" Link="Source/Engine/RunTracker.cs" />
+        <Compile Include="../Source/Engine/Stillness.cs" Link="Source/Engine/Stillness.cs" />
+    </ItemGroup>
+
+    <!-- snapshots of the tabs srs reads; refreshing them is how a change in
+         the sheet gets noticed (see SheetConsistencyTests) -->
+    <ItemGroup>
+        <None Include="Fixtures/*.csv" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="../Dialog/*.txt" Link="Dialog/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+        <PackageReference Include="xunit" Version="2.9.2" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    </ItemGroup>
+</Project>

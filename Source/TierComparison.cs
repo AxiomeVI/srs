@@ -1,249 +1,287 @@
 using System;
 using System.Collections.Generic;
 using Celeste.Mod.SpeedrunTool;
-using Celeste.Mod.SpeedrunTool.Message;
 using Celeste.Mod.SpeedrunTool.RoomTimer;
 using Microsoft.Xna.Framework;
 using Monocle;
-using MonoMod.ModInterop;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
-// Phase 4: when SpeedrunTool's room timer completes, compare the final time
-// against the selected checkpoint's sheet tiers and draw the reached tier's
-// name in its color under the timer, like srta's delta row.
+// Two rows above Speed Run Tool's timer: the segment's name, over its time,
+// tier, PB gain and delta to the next tier. Shown until the player leaves
+// RunWatcher.LatestRoom (the room the segment closed in, or the one a
+// re-entry that kept it landed in), and not again on coming back. The
+// Previous Segment hotkey calls them back until the player leaves that room.
 public static class TierComparison {
     private static SrsSettings Settings => SrsModule.Settings;
 
-    // final time captured on the frame the timer completes: GetRoomTime() keeps
-    // running in the background afterwards, only SpeedrunTool's display freezes.
-    // hasCapture is only set when that completion was a full run of the
-    // selected checkpoint (see IsFullRun); mutated during gameplay ⇒ registered
-    // with SpeedrunTool's save states, so loading a savestate restores the
-    // tier row of the moment of the save
-    private static bool wasCompleted;
-    private static bool hasCapture;
-    private static long capturedTicks;
-
-    // SegmentAutoDetect suspends itself while this is true: finishing a run
-    // transitions into the next checkpoint's room, and re-targeting Number of
-    // Rooms there would un-complete the timer and throw the result away
-    public static bool TimerCompleted => wasCompleted;
-
-    // recomputed every frame from capturedTicks (srta-style), so the row reacts
-    // instantly to selection changes and sheet re-imports; derived state only,
-    // deliberately not registered with save states
-    private static string tierText = "";
+    // recomputed every frame from RunWatcher.Attempt, so a sheet re-import shows
+    // at once; session display, not registered with save states
+    private static TierRows? rows;
+    private static string segmentName = "";
     private static Color tierColor = Color.White;
 
-    // drop the row below srta's delta row when srta is present; resolved on
-    // first render (mod load order between srs and srta is not guaranteed)
-    private static bool? srtaLoaded;
+    // the record the player walked away from
+    private static int dismissedSerial = -1;
 
-    private static object saveLoadAction;
+    // the room the rows were called back in, null when they were not: they
+    // hide on leaving it instead of RunWatcher.LatestRoom
+    private static string recalledIn;
 
-    // fields are filled at runtime by ModInterop()
-#pragma warning disable CS0649
-    [ModImportName("SpeedrunTool.RoomTimer")]
-    private static class RoomTimerImports {
-        public static Func<bool> RoomTimerIsCompleted;
-        public static Func<long> GetRoomTime;
-    }
+    // the gold of Speed Run Tool's timer on a best time. Plain text, not its
+    // renderer: that one draws decimals at 70 %, unreadable at this size
+    private static readonly Color PbColor = Calc.HexToColor("fad768");
 
-    [ModImportName("SpeedrunTool.SaveLoad")]
-    private static class SaveLoadImports {
-        public static Func<Type, string[], object> RegisterStaticTypes;
-        public static Action<object> Unregister;
-    }
-#pragma warning restore CS0649
+    // LiveSplit's default behind color
+    private static readonly Color BehindColor = Calc.HexToColor("cc1200");
+
+    // the player's sheet time for each record of the attempt, by serial, read
+    // when the record lands (or when the sheet first answers after it), never
+    // again: exporting this very time must not take its PB away. Each entry also
+    // holds the rank offset: what the row's standard adds to a time before ranking
+    private static readonly Dictionary<int, (bool Resolved, long? Ticks, long? RankOffsetTicks)> sheetTimes = [];
+    private static int sheetTimesFrom = -1;
+
+    // whether the rows were drawn last frame: the hotkey steps only what shows
+    private static bool drawn;
+
+    // how far back from the latest record the rows show, and its place in
+    // the attempt ("2/3"), empty when the attempt has one record
+    private static int stepsBack;
+    private static int steppedSerial = -1;
+    private static string place = "";
 
     public static void Load() {
+        // hook order: see SrsModule.Load
         On.Celeste.Level.Update += LevelOnUpdate;
         On.Celeste.SpeedrunTimerDisplay.Render += SpeedrunTimerDisplayOnRender;
-
-        typeof(RoomTimerImports).ModInterop();
-        typeof(SaveLoadImports).ModInterop();
-        saveLoadAction = SaveLoadImports.RegisterStaticTypes?.Invoke(typeof(TierComparison),
-            [nameof(wasCompleted), nameof(hasCapture), nameof(capturedTicks)]);
     }
 
     public static void Unload() {
         On.Celeste.Level.Update -= LevelOnUpdate;
         On.Celeste.SpeedrunTimerDisplay.Render -= SpeedrunTimerDisplayOnRender;
-
-        if (saveLoadAction != null) {
-            SaveLoadImports.Unregister?.Invoke(saveLoadAction);
-            saveLoadAction = null;
-        }
     }
 
     private static void LevelOnUpdate(On.Celeste.Level.orig_Update orig, Level self) {
-        // srs loads after SpeedrunTool (dependency), so this hook is outermost
-        // and the timer data of this frame is final after orig
         orig(self);
 
-        // srta-style hotkey: flip the toggle and confirm with SpeedrunTool's
-        // popup, so the row can be hidden without leaving the game
-        if (!self.Paused && Settings.ToggleShowTier.Pressed) {
-            Settings.ShowTier = !Settings.ShowTier;
-            SrsModule.Instance.SaveSettings();
-            PopupMessageUtils.ShowOptionState(Dialog.Clean("MODOPTIONS_SRS_SHOWTIER"),
-                Dialog.Clean(Settings.ShowTier ? DialogIds.On : DialogIds.Off));
-        }
-
-        if (RoomTimerImports.RoomTimerIsCompleted == null) {
+        if (!Settings.Enabled) {
             return;
         }
 
-        bool completed = RoomTimerImports.RoomTimerIsCompleted();
-        if (!completed) {
-            hasCapture = false;
-        } else if (!wasCompleted && IsFullRun()) {
-            hasCapture = true;
-            capturedTicks = RoomTimerImports.GetRoomTime();
+        // a new record shows itself; the hotkey steps back from it and wraps
+        // while the rows are up, and calls the latest back while they are not.
+        // A new record ends a recall, or the room it lands by would hide it
+        if (RunWatcher.LatestSerial != steppedSerial) {
+            steppedSerial = RunWatcher.LatestSerial;
+            stepsBack = 0;
+            recalledIn = null;
         }
 
-        wasCompleted = completed;
-        ComputeTier();
-    }
-
-    // the timer completing only means a finished run of the selected checkpoint
-    // when it stopped at the checkpoint's room count — SegmentSelector pushes
-    // it into SpeedrunTool's Number of Rooms on selection, so a mismatch is a
-    // deliberate manual override (partial-segment practice): no tier then
-    private static bool IsFullRun() {
-        SheetSegment segment = SegmentSelector.Current;
-        return segment != null
-            && SpeedrunToolSettings.Instance is { } settings
-            && settings.NumberOfRooms == RoomCounts.TargetFor(segment);
-    }
-
-    // first tier column whose threshold is >= the captured time wins; slower
-    // than every threshold (i.e. beyond Red 3) is Unranked. The Hidden column
-    // is 0:00.000 everywhere and never matches; empty/unparseable cells (null)
-    // are skipped
-    private static void ComputeTier() {
-        tierText = "";
-        if (!hasCapture) {
-            return;
-        }
-
-        SheetBlock block = SheetImporter.Data?.CheckpointBlock;
-        SheetSegment segment = SegmentSelector.Current;
-        if (block == null || segment == null) {
-            return;
-        }
-
-        TimeSpan time = TimeSpan.FromTicks(capturedTicks);
-        for (int i = 0; i < segment.Times.Count && i < block.Columns.Count; i++) {
-            if (segment.Times[i] is { } threshold && threshold > TimeSpan.Zero && time <= threshold) {
-                SetTier(block.Columns[i]);
-                return;
+        if (Hotkeys.Pressed(Hotkeys.PreviousSegment) && RunWatcher.Attempt.Count > 0) {
+            if (!drawn) {
+                recalledIn = self.Session.Level;
+                dismissedSerial = -1;
+                stepsBack = 0;
+            } else if (RunWatcher.Attempt.Count > 1) {
+                stepsBack = (stepsBack + 1) % RunWatcher.Attempt.Count;
             }
         }
 
-        SetTier("Unranked");
+        ComputeTier(self.Session);
     }
 
-    // tier colors: each sheet column name maps to its exact palette hex. Unlike
-    // XNA's named colors, the "1"-"3" rank suffix is significant here, so
-    // Purple 1/2/3 (and the other ranked tiers) are three distinct shades.
-    // WR/Hidden are white; Unranked stays grey; unknown columns fall back white
-    private static readonly Dictionary<string, Color> TierColors =
-        new(StringComparer.OrdinalIgnoreCase) {
-            ["WR"] = Calc.HexToColor("ffffff"),
-            ["Hidden"] = Calc.HexToColor("ffffff"),
-            ["Gold"] = Calc.HexToColor("ffbf00"),
-            ["Pink"] = Calc.HexToColor("c27ba0"),
-            ["Purple 1"] = Calc.HexToColor("8e7cc3"),
-            ["Purple 2"] = Calc.HexToColor("b4a7d6"),
-            ["Purple 3"] = Calc.HexToColor("d9d2e9"),
-            ["Indigo 1"] = Calc.HexToColor("7980f7"),
-            ["Indigo 2"] = Calc.HexToColor("a2a7fe"),
-            ["Indigo 3"] = Calc.HexToColor("bbbfff"),
-            ["Blue 1"] = Calc.HexToColor("6fa8dc"),
-            ["Blue 2"] = Calc.HexToColor("9fc5e8"),
-            ["Blue 3"] = Calc.HexToColor("cfe2f3"),
-            ["Cyan 1"] = Calc.HexToColor("76a5af"),
-            ["Cyan 2"] = Calc.HexToColor("a2c4c9"),
-            ["Cyan 3"] = Calc.HexToColor("d0e0e3"),
-            ["Green 1"] = Calc.HexToColor("93c47d"),
-            ["Green 2"] = Calc.HexToColor("b6d7a8"),
-            ["Green 3"] = Calc.HexToColor("d9ead3"),
-            ["Olive 1"] = Calc.HexToColor("afc47d"),
-            ["Olive 2"] = Calc.HexToColor("cbde9e"),
-            ["Olive 3"] = Calc.HexToColor("e6f9ba"),
-            ["Yellow 1"] = Calc.HexToColor("ffd966"),
-            ["Yellow 2"] = Calc.HexToColor("ffe599"),
-            ["Yellow 3"] = Calc.HexToColor("fff2cc"),
-            ["Orange 1"] = Calc.HexToColor("f6b26b"),
-            ["Orange 2"] = Calc.HexToColor("f9cb9c"),
-            ["Orange 3"] = Calc.HexToColor("fce5cd"),
-            ["Red 1"] = Calc.HexToColor("e06666"),
-            ["Red 2"] = Calc.HexToColor("ea9999"),
-            ["Red 3"] = Calc.HexToColor("f4cccc"),
-        };
+    // the shown record's row, looked up by name (see SheetBlock.Find), while
+    // the player is still in RunWatcher.LatestRoom, or in the room of a recall
+    private static void ComputeTier(Session session) {
+        rows = null;
+        if (session.Level != (recalledIn ?? RunWatcher.LatestRoom)) {
+            dismissedSerial = RunWatcher.LatestSerial;
+            recalledIn = null;
+        }
 
-    private static void SetTier(string column) {
-        tierText = column;
-        tierColor = column.Trim().Equals("Unranked", StringComparison.OrdinalIgnoreCase)
-            ? Color.Gray
-            : TierColors.GetValueOrDefault(column.Trim(), Color.White);
-    }
+        // the held sheet times are the current attempt's only. The attempt
+        // is only ever trimmed from its head: what stays keeps the time read
+        // when it landed, and is not read again
+        IReadOnlyList<(SegmentRecord Record, int Serial)> attempt = RunWatcher.Attempt;
+        int from = attempt.Count > 0 ? attempt[0].Serial : int.MaxValue;
+        if (from != sheetTimesFrom) {
+            foreach (int serial in new List<int>(sheetTimes.Keys)) {
+                if (serial < from) {
+                    sheetTimes.Remove(serial);
+                }
+            }
 
-    private static void SpeedrunTimerDisplayOnRender(On.Celeste.SpeedrunTimerDisplay.orig_Render orig, SpeedrunTimerDisplay self) {
-        orig(self);
+            sheetTimesFrom = from;
+        }
 
-        if (!Settings.ShowTier || tierText.Length == 0) {
+        SheetBlock block = SheetImporter.Data?.Block;
+        if (attempt.Count == 0 || block == null) {
             return;
         }
 
-        // hidden along with the room timer itself
-        if (SpeedrunToolSettings.Instance is not { Enabled: true } settings
+        foreach ((SegmentRecord landed, int serial) in attempt) {
+            if ((!sheetTimes.TryGetValue(serial, out var held) || (!held.Resolved && RemoteBests.IsResolved))
+                && block.Find(landed.Rule.Scope, landed.Rule.Name) is { } row) {
+                (long? ticks, long? rankOffset) = SheetTimeOf(landed.Rule, row);
+                sheetTimes[serial] = (RemoteBests.IsResolved, ticks, rankOffset);
+            }
+        }
+
+        // every new record resets stepsBack before this; the guard is for the index
+        stepsBack = Math.Min(stepsBack, attempt.Count - 1);
+        (SegmentRecord record, int shownSerial) = attempt[attempt.Count - 1 - stepsBack];
+        if (RunWatcher.LatestSerial == dismissedSerial
+            || block.Find(record.Rule.Scope, record.Rule.Name) is not { } segment) {
+            return;
+        }
+
+        (_, long? sheetTicks, long? rankOffsetTicks) = sheetTimes[shownSerial];
+        TierRows built = TierLine.Build(block.Columns, segment.Times, record.Ticks, sheetTicks, rankOffsetTicks);
+        rows = built;
+        segmentName = TierLine.NameOf(record.Rule.Scope, record.Rule.Name);
+        place = attempt.Count > 1 ? $"{attempt.Count - stepsBack}/{attempt.Count}" : "";
+        tierColor = built.Tier == SheetData.Unranked ? Color.Gray : TierColors.GetValueOrDefault(built.Tier, Color.White);
+    }
+
+    // the time the player's own sheet holds for the row, in the basis srs
+    // measures as the export screen compares it, and the row's rank offset;
+    // no time without an export URL or before the sheet answered
+    private static (long? Ticks, long? RankOffsetTicks) SheetTimeOf(SegmentRule rule, SheetSegment segment) {
+        RemoteRow remote = SheetRows.TryFind(segment.Chapter, segment.Name, out SheetRow row)
+            && RemoteBests.TryGet(SheetRows.TargetOf(row), out RemoteRow found) ? found : null;
+        return (SheetTiming.Comparable(remote).Ticks, TierLine.RankOffsetTicks(rule, remote));
+    }
+
+    // tier colors, copied from the sheet: each tier's cell fill, keyed by the
+    // full column name (the rank suffix is significant). Gold takes its ink,
+    // since its fill is near black; Unranked is grey, as on the
+    // sheet; unknown columns fall back white
+    private static readonly Dictionary<string, Color> TierColors =
+        new(StringComparer.OrdinalIgnoreCase) {
+            ["Gold"] = Calc.HexToColor("ffbf00"),
+            ["Pink"] = Calc.HexToColor("a64d79"),
+            ["Purple 1"] = Calc.HexToColor("351c75"),
+            ["Purple 2"] = Calc.HexToColor("674ea7"),
+            ["Purple 3"] = Calc.HexToColor("8e7cc3"),
+            ["Indigo 1"] = Calc.HexToColor("4d31bf"),
+            ["Indigo 2"] = Calc.HexToColor("7980f7"),
+            ["Indigo 3"] = Calc.HexToColor("a2a7fe"),
+            ["Blue 1"] = Calc.HexToColor("073763"),
+            ["Blue 2"] = Calc.HexToColor("0b5394"),
+            ["Blue 3"] = Calc.HexToColor("3d85c6"),
+            ["Cyan 1"] = Calc.HexToColor("003d3b"),
+            ["Cyan 2"] = Calc.HexToColor("105755"),
+            ["Cyan 3"] = Calc.HexToColor("458e8c"),
+            ["Green 1"] = Calc.HexToColor("274e13"),
+            ["Green 2"] = Calc.HexToColor("38761d"),
+            ["Green 3"] = Calc.HexToColor("6aa84f"),
+            ["Olive 1"] = Calc.HexToColor("88995f"),
+            ["Olive 2"] = Calc.HexToColor("a0b275"),
+            ["Olive 3"] = Calc.HexToColor("bacc85"),
+            ["Yellow 1"] = Calc.HexToColor("bf9000"),
+            ["Yellow 2"] = Calc.HexToColor("dcac18"),
+            ["Yellow 3"] = Calc.HexToColor("f1c232"),
+            ["Orange 1"] = Calc.HexToColor("b45f06"),
+            ["Orange 2"] = Calc.HexToColor("d17618"),
+            ["Orange 3"] = Calc.HexToColor("e69138"),
+            ["Red 1"] = Calc.HexToColor("990000"),
+            ["Red 2"] = Calc.HexToColor("cc0000"),
+            ["Red 3"] = Calc.HexToColor("e06666"),
+        };
+
+    private static void SpeedrunTimerDisplayOnRender(On.Celeste.SpeedrunTimerDisplay.orig_Render orig, SpeedrunTimerDisplay self) {
+        orig(self);
+        drawn = false;
+
+        // hidden along with the room timer itself, and with the whole mod
+        if (!Settings.Enabled || rows is not { } shown
+            || SpeedrunToolSettings.Instance is not { Enabled: true } settings
             || settings.RoomTimerType == RoomTimerType.Off || self.DrawLerp <= 0f) {
             return;
         }
 
-        DrawTier(self);
+        // the time keeps the tier's color without the tier
+        List<(string Text, Color Color)> parts = [];
+        string ranked = $"{(Settings.ShowTime ? shown.Time : "")} {(Settings.ShowTier ? shown.Tier : "")}".Trim();
+        if (ranked.Length > 0) {
+            parts.Add((ranked, tierColor));
+        }
+
+        if (Settings.ShowPbImprovement && shown.Pb != null) {
+            parts.Add((shown.Pb, PbColor));
+        }
+
+        if (Settings.ShowDelta && shown.Gap != null) {
+            parts.Add((shown.Gap, BehindColor));
+        }
+
+        drawn = true;
+        int slot = 0;
+        if (parts.Count > 0) {
+            DrawRow(self, slot++, parts);
+        }
+
+        if (Settings.ShowCheckpointName) {
+            DrawRow(self, slot, place.Length > 0
+                ? [(place, Color.Gray), (segmentName, Color.White)]
+                : [(segmentName, Color.White)]);
+        }
     }
 
-    // row below SpeedrunTool's time + PB rows (below srta's delta row when srta
-    // is installed), same background and sliding animation
-    private static void DrawTier(SpeedrunTimerDisplay self) {
-        const float topTimeHeight = 38f;
+    private const string PartSeparator = "  ";
+
+    // two rows fit above the timer at this size, below the top of the screen
+    private const float Scale = 0.54f;
+
+    // the timer's digits rise above its background: the rows end above them
+    private const float DigitRise = 10f;
+
+    // art shows between the two bands, or the rows read as one block
+    private const float RowGap = 4f;
+
+    // Speed Run Tool's text placement sits the ink high in the band: lowered
+    // to its middle
+    private const float TextDrop = 2f;
+
+    // the black ends this far before the text does, so the fade's tail runs
+    // the same length past every row: the look of Speed Run Tool's PB row
+    // on a time of eight characters
+    private const float FadeLead = 78f;
+
+    // slot 0 sits right above the timer, slot 1 above it; same background and
+    // sliding animation as Speed Run Tool's PB row, scaled down. One band for
+    // the whole row, sized on what is written
+    private static void DrawRow(SpeedrunTimerDisplay self, int slot, List<(string Text, Color Color)> parts) {
         const float timeMarginLeft = 32f;
-        const float scale = 0.6f;
+        float ratio = Scale / 0.6f;
 
-        srtaLoaded ??= IsSrtaLoaded();
-
+        // measured on the size DrawOutline picks for this scale, which is not
+        // the base size when the font has several loaded
         PixelFont font = Dialog.Languages["english"].Font;
-        float fontFaceSize = Dialog.Languages["english"].FontFaceSize;
-        float textWidth = font.Get(fontFaceSize).Measure(tierText).X * scale;
+        float baseSize = Dialog.Languages["english"].FontFaceSize;
+        PixelFontSize size = font.Get(baseSize * Scale);
+        float Width(string text) => size.Measure(text).X * Scale * baseSize / size.Size;
 
         MTexture bg = GFX.Gui["strawberryCountBG"];
-        float rowHeight = bg.Height * scale + 1f;
+        float rowHeight = bg.Height * Scale + 1f;
         float x = -300f * Ease.CubeIn(1f - self.DrawLerp);
-        float y = self.Y + topTimeHeight + rowHeight;
-        if (srtaLoaded.Value) {
-            y += rowHeight + 1f;
-        }
+        float y = self.Y - DigitRise - rowHeight - slot * (rowHeight + RowGap);
 
-        float width = timeMarginLeft + textWidth;
-        Draw.Rect(x, y - 1f, width + bg.Width * scale, 1f, Color.Black);
+        string whole = string.Join(PartSeparator, parts.ConvertAll(part => part.Text));
+        float width = Math.Max(0f, timeMarginLeft + Width(whole) - FadeLead);
         Draw.Rect(x, y, width + 2f, rowHeight, Color.Black);
-        bg.Draw(new Vector2(x + width, y), Vector2.Zero, Color.White, scale);
+        bg.Draw(new Vector2(x + width, y), Vector2.Zero, Color.White, Scale);
 
-        font.DrawOutline(fontFaceSize, tierText, new Vector2(x + timeMarginLeft, y + 28.4f),
-            new Vector2(0f, 1f), Vector2.One * scale, tierColor, 2f, Color.Black);
-    }
-
-    private static bool IsSrtaLoaded() {
-        foreach (EverestModule module in Everest.Modules) {
-            if (module.Metadata?.Name == "srta") {
-                return true;
-            }
+        Vector2 at = new(x + timeMarginLeft, y + 28.4f * ratio + TextDrop);
+        foreach ((string part, Color color) in parts) {
+            // a dark color is outlined in a light tint of itself, thinner: a white
+            // outline glared, and as thick as the black one it swallowed the fill
+            bool dark = TierLine.DarkOnBlack(color.R, color.G, color.B);
+            Color outline = dark ? Color.Lerp(color, Color.White, 0.5f) : Color.Black;
+            font.DrawOutline(baseSize, part, at, new Vector2(0f, 1f), Vector2.One * Scale, color,
+                dark ? 1f : 2f, outline);
+            at.X += Width(part + PartSeparator);
         }
-
-        return false;
     }
 }
