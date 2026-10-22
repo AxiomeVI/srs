@@ -72,7 +72,6 @@ A beta under its own name, **Speedrun Sheet Beta**, so that the released mod is 
 - **C-sides are covered.** A C-side run shows its row above the timer and is exported like any segment. It starts from the chapter's first spawn and ends when the heart stops the timer. It is timed as the game times the chapter, the frame that stops the timer included.
 - **A-side ILs are covered.** A run from a chapter's start to its end records the chapter's IL beside its checkpoints, timed as the game times the chapter, and exports it to the IL row of your sheet. At the end of a full run the rows above the timer show the IL, and Cycle Shown Segment steps back to the last checkpoint.
 - **Cycle Shown Segment brings the rows back.** Once they have hidden, after you walked on past the room where the segment ended, a press shows the last segment again until you leave the room you are in. Further presses step back through the chain as before.
-- **The darkest tier colors are outlined in a light tint of themselves** above the timer, so Purple 1, Indigo 1, Blue 1 and 2, Cyan 1 and 2, Green 1 and Red 1 read against the black band. The other tiers keep their black outline. In this beta, *Dark Tier Outline* under *Display* picks that outline among Black, three tints (25%, 50%, 75% of the way to white), White and Gray, to compare them; Tint 50% is the default.
 
 ## v3.7.0 — 2026-08-27 by Axiome
 

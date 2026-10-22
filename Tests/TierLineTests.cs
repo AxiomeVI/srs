@@ -132,33 +132,4 @@ public class TierLineTests {
     public void TheNameLeadsWithItsScopeOnce(string scope, string name, string shown) {
         Assert.Equal(shown, TierLine.NameOf(scope, name));
     }
-
-    [Theory]
-    // Purple 1 and Blue 1, the darkest fills; Blue 2, the lightest under the bar
-    [InlineData(0x35, 0x1c, 0x75)]
-    [InlineData(0x07, 0x37, 0x63)]
-    [InlineData(0x0b, 0x53, 0x94)]
-    public void ADarkColorGetsALightOutline(byte r, byte g, byte b) =>
-        Assert.True(TierLine.DarkOnBlack(r, g, b));
-
-    [Theory]
-    // Gold's ink, Purple 2 just over the bar, the gap's red, the grey of the place
-    [InlineData(0xff, 0xbf, 0x00)]
-    [InlineData(0x67, 0x4e, 0xa7)]
-    [InlineData(0xcc, 0x12, 0x00)]
-    [InlineData(0x80, 0x80, 0x80)]
-    [InlineData(0xff, 0xff, 0xff)]
-    public void ALightColorKeepsItsBlackOutline(byte r, byte g, byte b) =>
-        Assert.False(TierLine.DarkOnBlack(r, g, b));
-
-    [Theory]
-    // Blue 1: the tints step from it to white as Color.Lerp would
-    [InlineData(DarkOutline.Black, 0x00, 0x00, 0x00)]
-    [InlineData(DarkOutline.Tint25, 69, 105, 138)]
-    [InlineData(DarkOutline.Tint50, 131, 155, 177)]
-    [InlineData(DarkOutline.Tint75, 193, 205, 216)]
-    [InlineData(DarkOutline.White, 0xff, 0xff, 0xff)]
-    [InlineData(DarkOutline.Gray, 0x80, 0x80, 0x80)]
-    public void EachDarkOutlineStyleGivesItsColor(DarkOutline style, byte r, byte g, byte b) =>
-        Assert.Equal((r, g, b), TierLine.OutlineOfDark(style, 0x07, 0x37, 0x63));
 }
