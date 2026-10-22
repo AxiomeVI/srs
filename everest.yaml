@@ -1,5 +1,5 @@
 - Name: Speedrun Sheet Beta
-  Version: 4.0.0-beta.1
+  Version: 4.0.0-beta.2
   DLL: bin/srs.dll
   Dependencies:
     - Name: Everest
