@@ -69,9 +69,17 @@ public class SrsSettings : EverestModuleSettings {
     [SettingIgnore]
     public bool ShowDelta { get; set; } = true;
 
+    // the outline of the darkest tier colors, for testers to compare
+    [SettingIgnore]
+    public DarkOutline DarkOutline { get; set; } = DarkOutline.Tint50;
+
     // sends a session best that beats the sheet as soon as its row ends; off by default
     [SettingIgnore]
     public bool AutoExport { get; set; }
+
+    // a popup when an automatic export wrote every row it sent; a failure always shows
+    [SettingIgnore]
+    public bool AutoExportPopup { get; set; } = true;
 
     // local date the URL was last set, "yyyy-MM-dd". Display only: it lets the
     // status line say "set <date>" without showing the URL

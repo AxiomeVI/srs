@@ -8,6 +8,11 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// tested.
 internal readonly record struct TierRows(string Time, string Tier, string Pb, string Gap);
 
+/// The outline of a tier color DarkOnBlack holds, a choice of the beta's.
+/// ⚠️ The names are stored in the settings file: a removed one fails the
+/// file's parse, and every setting after it, hotkeys included, resets.
+public enum DarkOutline { Black, Tint25, Tint50, Tint75, White, Gray }
+
 internal static class TierLine {
     /// `sheetTicks` is the player's own time for the row, null when unknown.
     /// The time is ranked as Speed Run Tool shows it, to the millisecond, which
@@ -49,6 +54,20 @@ internal static class TierLine {
     public static bool DarkOnBlack(byte r, byte g, byte b) {
         double luminance = 0.2126 * Linear(r) + 0.7152 * Linear(g) + 0.0722 * Linear(b);
         return (luminance + 0.05) / 0.05 < 3;
+    }
+
+    /// The outline drawn around a dark tier color. A tint is that far from the
+    /// color to white, truncated as Color.Lerp does.
+    public static (byte R, byte G, byte B) OutlineOfDark(DarkOutline style, byte r, byte g, byte b) {
+        static byte Toward(byte channel, float amount) => (byte)(int)(channel + (255 - channel) * amount);
+        return style switch {
+            DarkOutline.Black => (0, 0, 0),
+            DarkOutline.Tint25 => (Toward(r, 0.25f), Toward(g, 0.25f), Toward(b, 0.25f)),
+            DarkOutline.Tint75 => (Toward(r, 0.75f), Toward(g, 0.75f), Toward(b, 0.75f)),
+            DarkOutline.White => (255, 255, 255),
+            DarkOutline.Gray => (128, 128, 128),
+            _ => (Toward(r, 0.5f), Toward(g, 0.5f), Toward(b, 0.5f)),
+        };
     }
 
     private static double Linear(byte channel) {

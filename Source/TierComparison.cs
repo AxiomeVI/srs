@@ -275,10 +275,12 @@ public static class TierComparison {
 
         Vector2 at = new(x + timeMarginLeft, y + 28.4f * ratio + TextDrop);
         foreach ((string part, Color color) in parts) {
-            // a dark color is outlined in a light tint of itself, thinner: a white
-            // outline glared, and as thick as the black one it swallowed the fill
+            // a dark color is outlined thinner, in the color the setting picks: as
+            // thick as the black one, a light outline swallowed the fill
             bool dark = TierLine.DarkOnBlack(color.R, color.G, color.B);
-            Color outline = dark ? Color.Lerp(color, Color.White, 0.5f) : Color.Black;
+            (int r, int g, int b) = dark
+                ? TierLine.OutlineOfDark(SrsModule.Settings.DarkOutline, color.R, color.G, color.B) : (0, 0, 0);
+            Color outline = new(r, g, b);
             font.DrawOutline(baseSize, part, at, new Vector2(0f, 1f), Vector2.One * Scale, color,
                 dark ? 1f : 2f, outline);
             at.X += Width(part + PartSeparator);

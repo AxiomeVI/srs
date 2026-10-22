@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Celeste.Mod.CelesteHotkeys;
 using Celeste.Mod.SpeedrunSheet.MenuTools;
 using Monocle;
@@ -31,6 +32,19 @@ internal static class ModMenu {
         pbImprovement.OnEnter = () => display.SetItemVisible(pbNeedsSheet, true, smooth: true);
         pbImprovement.OnLeave = () => display.SetItemVisible(pbNeedsSheet, false, smooth: true);
         AddSwitch(display, "MODOPTIONS_SRS_SHOWDELTA", settings.ShowDelta, on => settings.ShowDelta = on);
+        // a beta choice, for testers to compare the outlines of the darkest tiers
+        KeyValuePair<DarkOutline, string>[] outlines = [
+            KeyValuePair.Create(DarkOutline.Black, Dialog.Clean("MODOPTIONS_SRS_DARKOUTLINE_BLACK")),
+            KeyValuePair.Create(DarkOutline.Tint25, Dialog.Clean("MODOPTIONS_SRS_DARKOUTLINE_TINT25")),
+            KeyValuePair.Create(DarkOutline.Tint50, Dialog.Clean("MODOPTIONS_SRS_DARKOUTLINE_TINT50")),
+            KeyValuePair.Create(DarkOutline.Tint75, Dialog.Clean("MODOPTIONS_SRS_DARKOUTLINE_TINT75")),
+            KeyValuePair.Create(DarkOutline.White, Dialog.Clean("MODOPTIONS_SRS_DARKOUTLINE_WHITE")),
+            KeyValuePair.Create(DarkOutline.Gray, Dialog.Clean("MODOPTIONS_SRS_DARKOUTLINE_GRAY")),
+        ];
+        TextMenuExt.EnumerableSlider<DarkOutline> darkOutline =
+            new(Dialog.Clean("MODOPTIONS_SRS_DARKOUTLINE"), outlines, settings.DarkOutline);
+        darkOutline.Change(style => settings.DarkOutline = style);
+        display.AddItem(darkOutline);
         section.AddItem(display);
 
         Action updateStandards = SheetImporter.CreateMenuEntries(section);
@@ -80,6 +94,14 @@ internal static class ModMenu {
         });
         autoExport.OnUpdate = () => Show(sheet, autoExport, ExportTarget.IsSet);
         sheet.AddItem(autoExport);
+
+        // does nothing unless auto-export can run
+        TextMenu.OnOff autoExportPopup = new(Dialog.Clean("MODOPTIONS_SRS_AUTOEXPORTPOPUP"), settings.AutoExportPopup) {
+            Visible = ExportTarget.IsSet && settings.AutoExport,
+        };
+        autoExportPopup.Change(on => settings.AutoExportPopup = on);
+        autoExportPopup.OnUpdate = () => Show(sheet, autoExportPopup, ExportTarget.IsSet && settings.AutoExport);
+        sheet.AddItem(autoExportPopup);
 
         ExportUrlMenu.CreateMenuEntries(sheet);
         section.AddItem(sheet);
