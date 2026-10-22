@@ -2,7 +2,7 @@
 
 ## v4.0.0-beta.2
 
-- **Auto-export says when it worked.** When every row it sent is written, a popup says so. *Popup When Sent*, under *Auto Export on PB* in *Your Sheet*, turns it off; it is on by default. A row that was not written still shows its own message, whatever the switch.
+- **Auto-export says when it worked.** When every row it sent is written, a popup says so. *Popup When Exported*, under *Auto Export on PB* in *Your Sheet*, turns it off; it is on by default. A row that was not written still shows its own message, whatever the switch.
 - **The darkest tier colors are outlined in black again**, like every other part of the rows above the timer. The light tint of beta.1 was compared in game with other outlines, and black read best.
 
 ## v4.0.0-beta.1
