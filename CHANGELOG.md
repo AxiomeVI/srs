@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v4.0.0 — 2026-11-07
 
 - **Nothing to select.** The Chapter and Checkpoint sliders, Category, Auto-Detect, Show Selection and their hotkeys are gone, and so is the greyed row under the timer. srs times every segment that can be running. Of the old hotkeys, one remains: Open Sheet Export. Settings files lose the removed keys at the next save.
 - **Chained practice.** Running several checkpoints in a row records each segment with its own time and tier. The rows above the timer show the last one completed, the most specific when several complete together: a row that asks for more than the plain one always wins over it.
