@@ -71,6 +71,10 @@ public class SrsSettings : EverestModuleSettings {
     [SettingIgnore]
     public bool AutoExport { get; set; }
 
+    // a popup when an automatic export wrote every row it sent; a failure always shows
+    [SettingIgnore]
+    public bool AutoExportPopup { get; set; } = true;
+
     // local date the URL was last set, "yyyy-MM-dd". Display only: it lets the
     // status line say "set <date>" without showing the URL
     [SettingIgnore]

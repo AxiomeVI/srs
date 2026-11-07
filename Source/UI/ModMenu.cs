@@ -81,6 +81,14 @@ internal static class ModMenu {
         autoExport.OnUpdate = () => Show(sheet, autoExport, ExportTarget.IsSet);
         sheet.AddItem(autoExport);
 
+        // does nothing unless auto-export can run
+        TextMenu.OnOff autoExportPopup = new(Dialog.Clean("MODOPTIONS_SRS_AUTOEXPORTPOPUP"), settings.AutoExportPopup) {
+            Visible = ExportTarget.IsSet && settings.AutoExport,
+        };
+        autoExportPopup.Change(on => settings.AutoExportPopup = on);
+        autoExportPopup.OnUpdate = () => Show(sheet, autoExportPopup, ExportTarget.IsSet && settings.AutoExport);
+        sheet.AddItem(autoExportPopup);
+
         ExportUrlMenu.CreateMenuEntries(sheet);
         section.AddItem(sheet);
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v4.0.0 — 2026-11-07
 
 - **Nothing to select.** The Chapter and Checkpoint sliders, Category, Auto-Detect, Show Selection and their hotkeys are gone, and so is the greyed row under the timer. srs times every segment that can be running. Of the old hotkeys, one remains: Open Sheet Export. Settings files lose the removed keys at the next save.
 - **Chained practice.** Running several checkpoints in a row records each segment with its own time and tier. The rows above the timer show the last one completed, the most specific when several complete together: a row that asks for more than the plain one always wins over it.
@@ -28,9 +28,9 @@
 - **An export sets the Timing cells.** A row's Timing cell is set as the run was played (`S&Q` / `No S&Q`), to `IL` on the all red berries and full clear chapter rows, and to `SRT` on the A-side `RTM` rows. It is left alone when srs cannot tell. Details: README.
 - **A `FileTime` entry is compared fairly.** srs converts it with the sheet's buffer, shows the result in a new ADJUSTED column, and uses it for the `PB` above the timer.
 - **`1arb IL` and `1afc IL` have their tier** once srs has read your sheet.
-- **Auto-export on a PB (optional, off by default).** *Auto Export on PB*, in Mod Options once your web app URL is set, sends a time to your sheet as soon as its segment ends, with no screen. It sends every row the export screen would tick by itself, under the same rules, Timing cells included. It never sends a row your sheet does not have, and a time it wrote is not written again if you then change the cell. Nothing shows when it works. If a row is refused or your sheet does not answer, one message says how many rows were not written; they stay ticked on the export screen, and a request that got no answer goes again with your next improved segment. While the setting is on, unticking a row on the export screen does not hold it back. It waits while the export screen is open. The sending is done off the game's thread.
+- **Auto-export on a PB (optional, off by default).** *Auto Export on PB*, in Mod Options once your web app URL is set, sends a time to your sheet as soon as its segment ends, with no screen. It sends every row the export screen would tick by itself, under the same rules, Timing cells included. It never sends a row your sheet does not have, and a time it wrote is not written again if you then change the cell. When every row it sent is written, a popup says so; *Popup When Exported*, under it, turns that off. If a row is refused or your sheet does not answer, one message says how many rows were not written; they stay ticked on the export screen, and a request that got no answer goes again with your next improved segment. While the setting is on, unticking a row on the export screen does not hold it back. It waits while the export screen is open. The sending is done off the game's thread.
 - **Nothing is recorded under an assist or a variant.** Game speed, invincibility, extra dashes, Mirror Mode and the others switch recording off while they are on, as the *Enabled* switch does; Play as Badeline does not. Such a time showed its tier and could be exported.
-- **Mod Options is grouped.** With the mod on, the section is five rows when closed: *Enabled*, *Display* (the switches for the rows above the timer), *Update Standards*, *Your Sheet* (*Open Sheet Export*, *Auto Export on PB*, the web app URL and *Forget Sheet Web App URL*) and *Keybinds*.
+- **Mod Options is grouped.** With the mod on, the section is five rows when closed: *Enabled*, *Display* (the switches for the rows above the timer), *Update Standards*, *Your Sheet* (*Open Sheet Export*, *Auto Export on PB*, *Popup When Exported*, the web app URL and *Forget Sheet Web App URL*) and *Keybinds*.
 - **Selecting *Update Standards* shows when the standards were last updated**, in place of a segment count. When an update fails, at launch too, the line stays up in red and says which standards are still in use, until an update goes through.
 - **Show PB Improvement says what it needs.** Selecting it shows a line: the PB is the time your sheet holds, so the switch does nothing until a sheet web app URL is set.
 - **A hotkey can explain itself.** *Cycle Shown Segment* shows a line under its row on the Keybinds screen saying what it does.
@@ -70,7 +70,6 @@
 - **C-sides are covered.** A C-side run shows its row above the timer and is exported like any segment. It starts from the chapter's first spawn and ends when the heart stops the timer. It is timed as the game times the chapter, the frame that stops the timer included.
 - **A-side ILs are covered.** A run from a chapter's start to its end records the chapter's IL beside its checkpoints, timed as the game times the chapter, and exports it to the IL row of your sheet. At the end of a full run the rows above the timer show the IL, and Cycle Shown Segment steps back to the last checkpoint.
 - **Cycle Shown Segment brings the rows back.** Once they have hidden, after you walked on past the room where the segment ended, a press shows the last segment again until you leave the room you are in. Further presses step back through the chain as before.
-- **The darkest tier colors are outlined in a light tint of themselves** above the timer, so Purple 1, Indigo 1, Blue 1 and 2, Cyan 1 and 2, Green 1 and Red 1 read against the black band. The other tiers keep their black outline.
 
 ## v3.7.0 — 2026-08-27 by Axiome
 

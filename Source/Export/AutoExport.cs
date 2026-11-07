@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 
 namespace Celeste.Mod.SpeedrunSheet;
@@ -18,8 +19,9 @@ internal sealed class AutoHost {
     public Action<Action> Run { get; init; }
 }
 
-/// Sends what beats the sheet with no screen. ⚠️ Offer and TakeFailed are the
-/// only members the game thread calls during play: neither locks, logs or waits.
+/// Sends what beats the sheet with no screen. ⚠️ Offer, TakeFailed and
+/// TakeWritten are the only members the game thread calls during play: none
+/// locks, logs or waits.
 internal static class AutoExport {
     private sealed record Offered(RunBook.Run[] Runs, string Playing);
 
@@ -33,6 +35,9 @@ internal static class AutoExport {
     // 0 idle, 1 evaluating, 2 evaluating and asked again
     private static int state;
     private static int failed;
+    // rows of sends that left no row behind. One with a row not written counts
+    // in failed alone; one with a changed row, which goes again by itself, nowhere
+    private static int written;
     // the two below belong to the evaluation, which never runs twice at once
     private static string lastCause;
     private static readonly HashSet<SheetRowRef> absentLogged = [];
@@ -67,6 +72,10 @@ internal static class AutoExport {
     public static int TakeFailed() =>
         Volatile.Read(ref failed) == 0 ? 0 : Interlocked.Exchange(ref failed, 0);
 
+    /// Game thread, each frame: the rows written since last asked, else 0.
+    public static int TakeWritten() =>
+        Volatile.Read(ref written) == 0 ? 0 : Interlocked.Exchange(ref written, 0);
+
     /// For the tests: nothing offered, nothing pending, idle.
     internal static void Reset() {
         offered = null;
@@ -74,6 +83,7 @@ internal static class AutoExport {
         Volatile.Write(ref retryPending, 0);
         Volatile.Write(ref state, 0);
         Volatile.Write(ref failed, 0);
+        Volatile.Write(ref written, 0);
         lastCause = null;
         absentLogged.Clear();
     }
@@ -164,6 +174,8 @@ internal static class AutoExport {
             outcome => {
                 if (outcome.NotWritten > 0) {
                     Interlocked.Add(ref failed, outcome.NotWritten);
+                } else if (outcome.Written > 0 && outcome.Results.All(r => r.Status != "changed")) {
+                    Interlocked.Add(ref written, outcome.Written);
                 }
             });
         if (refusal != WriteRefusal.None) {

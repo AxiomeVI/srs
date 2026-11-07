@@ -44,18 +44,6 @@ internal static class TierLine {
     /// the chapter time srs sums: 1A's two chapter rows.
     public static bool StandardInFileTime(SegmentRule rule) => rule.SpansLeaves && rule.Scope == "1a";
 
-    /// Whether text in this color needs a light outline to read on the rows'
-    /// black band: under 3:1 contrast against black, WCAG's bar for large text.
-    public static bool DarkOnBlack(byte r, byte g, byte b) {
-        double luminance = 0.2126 * Linear(r) + 0.7152 * Linear(g) + 0.0722 * Linear(b);
-        return (luminance + 0.05) / 0.05 < 3;
-    }
-
-    private static double Linear(byte channel) {
-        double s = channel / 255.0;
-        return s <= 0.04045 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
-    }
-
     /// "1a Crossing", "6a Lake": the scope, unless the name is it ("1c",
     /// Farewell's "Farewell"). The berry and full clear rows read as players
     /// write them: "1arb Start", "1afc Start".
