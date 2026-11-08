@@ -68,6 +68,9 @@ public static class RunWatcher {
     // the wipe the last load restored with the level, before a player load
     // starts its own; read and cleared on the next frame
     private static ScreenWipe restoredWipe;
+    // a savestate made since the last fed frame. Outside Saved: a load must
+    // not bring it back
+    private static bool stateSaved;
 
     // never saved: what a load is compared against. stamp only grows, so a
     // saved stamp differs from it once a frame has been fed since the save
@@ -201,10 +204,14 @@ public static class RunWatcher {
             Logger.Log(LogLevel.Warn, "srs", "Speed Run Tool's SaveLoad did not bind: savestate loads cannot be seen, so srs records nothing");
         }
 
+        // saveState runs from Speed Run Tool's hotkey, before the level
+        // updates, which stays frozen until the save's wipe ends: the next
+        // fed frame reads the level as saved, as a load of it would.
         // loadState runs once the level is restored, before a player load's
         // wipe starts. clearState stays unwired: clearing a slot rewinds
         // nothing, and a TAS may clear the slots as it starts
-        wipeAction = SaveLoadImports.RegisterSaveLoadAction?.Invoke(null,
+        wipeAction = SaveLoadImports.RegisterSaveLoadAction?.Invoke(
+            (_, _) => stateSaved = true,
             (_, level) => restoredWipe = level.Wipe, null, null, null, null);
 
         typeof(SplitImports).ModInterop();
@@ -314,6 +321,7 @@ public static class RunWatcher {
             // cleared after orig too: a LoadLevel or a restart inside it would set them
             fedLastFrame = false;
             restoredWipe = null;
+            stateSaved = false;
             orig(self);
             roomLoad = RoomLoad.None;
             chapterRestarted = false;
@@ -334,6 +342,10 @@ public static class RunWatcher {
             // a room loaded before the load belongs to the timeline it left
             roomLoad = RoomLoad.None;
         }
+
+        // making a savestate is a new attempt too, as if it were loaded at once
+        bool saved = stateSaved && !loaded;
+        stateSaved = false;
 
         long before = self.Session.Time;
         Player playerBefore = self.Tracker.GetEntity<Player>();
@@ -404,11 +416,13 @@ public static class RunWatcher {
             attempt.Clear();
             leave = null;
             watched = false;
-        } else if (loaded) {
+        } else if (loaded || saved) {
             // every load is a new attempt. With control, the room's Current Room
             // segment opens if the player has not moved since appearing on its
-            // start spawn; without, it waits for the appearance that follows
-            bool wipeEnd = loadWiping
+            // start spawn; without, it waits for the appearance that follows.
+            // A save starts its wipe a frame later (a TAS's starts none, but
+            // a row a TAS plays is never recorded)
+            bool wipeEnd = (saved || loadWiping)
                            && SpeedrunToolSettings.Instance?.FreezeAfterLoadStateType == FreezeAfterLoadStateType.Off;
             if (controlBefore) {
                 tracker.Restart(scope, roomBefore, before - (wipeEnd ? WipeEndFrame : 0), true,
