@@ -35,6 +35,10 @@ internal enum StartSetup {
     // collected, or from a savestate there; never by walking in, nor on any
     // other restart or re-entry
     HeartRespawn,
+    // valid only from a load that plays the chapter's intro: chapter select,
+    // `console load`, Restart Chapter, Continue in its first room. Never from
+    // a savestate, a teleport, the debug map or a death in that room
+    ChapterLoad,
 }
 
 internal enum EndKind {
@@ -98,7 +102,8 @@ internal sealed record SegmentRule(
     public bool AlsoWalkIn { get; init; }
 
     /// Whether walking into its start room from its entry room opens it.
-    public bool OpensOnWalkIn => Setup is not (StartSetup.MapSpawn or StartSetup.HeartRespawn) || AlsoWalkIn;
+    public bool OpensOnWalkIn => Setup is not (StartSetup.MapSpawn or StartSetup.HeartRespawn or StartSetup.ChapterLoad)
+                                 || AlsoWalkIn;
 
     /// A row that starts after a wake-up (SegmentAutoDetect.WakeUpSpawns): how
     /// it was opened says whether a Save and Quit came before its run.

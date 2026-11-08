@@ -79,6 +79,9 @@ public static class RunWatcher {
     private static bool lastCompleted;
     private static bool fedLastFrame;
     private static RoomLoad roomLoad;
+    // the intro of the last LoadLevel from the loader, read with a Loader
+    // roomLoad that same call set: Respawn unless the session starts the chapter
+    private static Player.IntroTypes loaderIntro;
     // inside Level.Reload, the game's only LoadLevel(Respawn)
     private static bool reloading;
 
@@ -249,6 +252,10 @@ public static class RunWatcher {
             : playerIntro != Player.IntroTypes.Respawn ? RoomLoad.WalkIn
             : reloading ? RoomLoad.Respawn
             : RoomLoad.Teleport;
+        if (isFromLoader) {
+            loaderIntro = playerIntro;
+        }
+
         if (kind > roomLoad) {
             roomLoad = kind;
         }
@@ -430,6 +437,7 @@ public static class RunWatcher {
             // starts off screen). A checkpoint entered from chapter select
             // counts without its wake-up
             Func<SegmentRule, bool> atStart = AtStartSpawn(session, session.LevelData, session.RespawnPoint);
+            bool chapterLoad = loaderIntro != Player.IntroTypes.Respawn;
             PendingLeave left = leave;
             leave = null;
             bool reentry = left != null && IsReentry(left, session, before);
@@ -452,7 +460,8 @@ public static class RunWatcher {
                 // closed at the leave, or all of a chapter run in pieces
                 // that closed there, whatever twin of it still carries on.
                 // A Save and Quit closes nothing
-                bool carried = tracker.Reentered(left.Kind, scope, room, before, control, launching, atStart);
+                bool carried = tracker.Reentered(left.Kind, scope, room, before, control, launching, atStart,
+                    chapterLoad);
                 bool chainClosed = attempt.Exists(entry => entry.Serial > left.Serial && entry.Record.Rule.SpansLeaves);
                 if (!carried || chainClosed) {
                     if (!chainClosed) {
@@ -467,7 +476,7 @@ public static class RunWatcher {
                     LatestRoom = room;
                 }
             } else {
-                tracker.Restart(scope, room, before, control, launching, atStart);
+                tracker.Restart(scope, room, before, control, launching, atStart, chapterLoad: chapterLoad);
             }
 
             restarted = true;

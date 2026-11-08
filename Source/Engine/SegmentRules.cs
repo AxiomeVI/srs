@@ -47,6 +47,7 @@ internal static class SegmentRules {
                 : traits.Berries ?? (chapterRun ? BerrySet.WholeChapter : new BerrySet(row.Anchor));
             StartSetup setup = traits.MapSpawn ? StartSetup.MapSpawn
                 : SegmentAutoDetect.HeartRespawns.Contains(anchor) ? StartSetup.HeartRespawn
+                : SegmentAutoDetect.ChapterLoadStarts.Contains(anchor) ? StartSetup.ChapterLoad
                 : row.Anchor == "Start" || SegmentAutoDetect.WakeUpSpawns.ContainsKey(anchor) ? StartSetup.CurrentRoom
                 : StartSetup.NextRoom;
 

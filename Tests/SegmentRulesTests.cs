@@ -38,11 +38,9 @@ public class SegmentRulesTests {
         "7b/Start", "7b/IL", "8b/Start", "8b/IL",
         "7a/Start Gem",
         "2a/FC Start", "4a/FC Start", "7a/FC Start",
-        "2a/FC IL", "3a/FC IL", "4a/FC IL", "7a/FC IL", "8a/FC IL", "Farewell/FC DTS IL", "Farewell/FC No DTS IL",
+        "2a/FC IL", "3a/FC IL", "4a/FC IL", "7a/FC IL", "Farewell/FC DTS IL", "Farewell/FC No DTS IL",
         "7a/Start",
         "7a/IL", "7a/IL Tape Clear", "7a/IL Tape RTM", "7a/IL Heart Tape RTM",
-        "8a/Start",
-        "8a/IL", "8a/IL Tape Clear",
         "1c/1c", "2c/2c", "3c/3c", "4c/4c", "5c/5c", "6c/6c", "7c/7c", "8c/8c",
         "Farewell/Start",
         "Farewell/Start DTS",
@@ -54,7 +52,6 @@ public class SegmentRulesTests {
         "4a/ARB Start", "4a/ARB IL",
         "5a/ARB Start", "5a/ARB Unravelling", "5a/ARB IL",
         "7a/ARB Start", "7a/ARB IL",
-        "8a/ARB IL",
         "1a/FC IL", "5a/FC IL", "6a/FC IL",
     ];
 
@@ -103,8 +100,8 @@ public class SegmentRulesTests {
         }
     }
 
-    // every other row is NextRoom, MapSpawn (TheMapSpawnRows) or HeartRespawn: a new Start-anchored
-    // row, or a new wake-up, shows up here as a diff
+    // every other row is NextRoom, MapSpawn (TheMapSpawnRows), HeartRespawn or ChapterLoad
+    // (TheChapterLoadRows): a new Start-anchored row, or a new wake-up, shows up here as a diff
     [Fact]
     public void CurrentRoomRowsAreTheChapterStartsAndTheWakeUps() {
         HashSet<string> currentRoom = SegmentRules.All.Where(r => r.Setup == StartSetup.CurrentRoom)
@@ -157,6 +154,13 @@ public class SegmentRulesTests {
              "1a/ARB Chasm-2", "4a/ARB Cliff Face (from RTM)", "5a/ARB Depths", "7a/ARB 2500m-2",
              "1a/FC Crossing to RTM", "1a/FC Chasm-2", "5a/FC Depths", "6a/FC Hollows (from RTM)"],
             SegmentRules.All.Where(r => r.Setup == StartSetup.MapSpawn).Select(r => $"{r.Scope}/{r.Name}"));
+    }
+
+    // the owner's rule: 8A's Start rows start only on a chapter load, never on a savestate
+    [Fact]
+    public void TheChapterLoadRows() {
+        Assert.Equal(["8a/Start", "8a/IL", "8a/IL Tape Clear", "8a/ARB IL", "8a/FC IL"],
+            SegmentRules.All.Where(r => r.Setup == StartSetup.ChapterLoad).Select(r => $"{r.Scope}/{r.Name}"));
     }
 
     // 7A's heart needs the gems, which the berry route does not take

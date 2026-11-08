@@ -67,6 +67,13 @@ public static partial class SegmentAutoDetect {
         ("7b", "Start"),
     ];
 
+    // (scope, game checkpoint) of the segments that start only on a load
+    // playing the chapter's intro (StartSetup.ChapterLoad), never from a
+    // savestate: the owner's rule for Core
+    internal static readonly HashSet<(string Scope, string GameName)> ChapterLoadStarts = [
+        ("8a", "Start"),
+    ];
+
     // (scope, game checkpoint) -> the room a segment's first room must be
     // entered from to open it, and to close the one before with a time. Every
     // Next Room and after-wake-up segment has one; a chapter's Start and 7A's

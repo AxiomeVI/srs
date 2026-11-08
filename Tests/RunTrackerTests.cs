@@ -142,6 +142,46 @@ public class RunTrackerTests {
         Assert.Equal(ReturnToMapNote.With, Assert.Single(t.Left(LeaveKind.ReturnToMap, 150, One)).ReturnToMap);
     }
 
+    // 8A's Start: only a load playing the chapter's walk-in opens it, once control returns
+    [Fact]
+    public void AChapterLoadRowOpensOnlyOnALoadThatPlayedTheIntro() {
+        Add("Start", "00", "a-00", setup: StartSetup.ChapterLoad, scope: "8a");
+        RunTracker t = Tracker();
+
+        // a savestate on the spawn, with control or mid walk-in
+        t.Restart("8a", "00", 0, true, false, _ => true, fromState: true);
+        Assert.Empty(t.Open);
+        t.RestartAtAppearance("8a", "00");
+        t.ControlReturned("00", 50, _ => true);
+        Assert.Empty(t.Open);
+
+        // a teleport, a load with no intro (the debug map), a death zeroing the clock
+        t.Restart("8a", "00", 0, false, false, _ => true);
+        t.ControlReturned("00", 50, _ => true);
+        Assert.Empty(t.Open);
+        t.ClockZeroed("8a", "00", 80, 0, true, false, _ => true);
+        Assert.Empty(t.Open);
+
+        // chapter select, `console load`, Restart Chapter
+        t.Restart("8a", "00", 0, false, false, _ => true, chapterLoad: true);
+        Assert.Empty(t.Open);
+        t.ControlReturned("00", 0, _ => true);
+        Assert.Single(t.Open);
+    }
+
+    // Continue after a Save and Quit in Core's first room plays the walk-in again
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AReentryOpensAChapterLoadRowOnlyWhenItPlayedTheIntro(bool chapterLoad) {
+        Add("Start", "00", "a-00", setup: StartSetup.ChapterLoad, scope: "8a");
+        RunTracker t = Tracker();
+
+        t.Reentered(LeaveKind.SaveAndQuit, "8a", "00", 40, true, false, _ => true, chapterLoad);
+
+        Assert.Equal(chapterLoad ? 1 : 0, t.Open.Count());
+    }
+
     [Fact]
     public void ABacktrackIntoAStartRoomOpensNothing() {
         Add("Crossing", "6", "9b", entry: "5");

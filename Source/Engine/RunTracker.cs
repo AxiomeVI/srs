@@ -163,14 +163,15 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// The Current Room and map-spawn segments starting in this room then open
     /// where atStart says the player is at their start; nothing else does.
     /// fromState: the savestate, the only one of the four a Heart Respawn
-    /// segment opens on.
+    /// segment opens on. chapterLoad: a level whose load played the chapter's
+    /// intro, the only one a Chapter Load segment opens on.
     /// What it opens counts as opened by neither a walk-in nor a Save and Quit.
     public void Restart(string scope, string room, long reading, bool control, bool launching,
-        Func<SegmentRule, bool> atStart, bool fromState = false) {
+        Func<SegmentRule, bool> atStart, bool fromState = false, bool chapterLoad = false) {
         Drop();
         OpenAt(scope, room, reading, control, launching, standalone: true,
             rule => rule.Setup != StartSetup.NextRoom && (fromState || rule.Setup != StartSetup.HeartRespawn)
-                    && atStart(rule),
+                    && (chapterLoad || rule.Setup != StartSetup.ChapterLoad) && atStart(rule),
             fromLoad: false, Opening.Other);
     }
 
@@ -181,7 +182,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     public void RestartAtAppearance(string scope, string room) {
         Drop();
         OpenAt(scope, room, 0, control: false, launching: false, standalone: true,
-            rule => rule.Setup != StartSetup.NextRoom, fromLoad: true, Opening.Other);
+            rule => rule.Setup is not (StartSetup.NextRoom or StartSetup.ChapterLoad), fromLoad: true, Opening.Other);
     }
 
     /// The player walked into this room from another. Closes first, then opens:
@@ -390,13 +391,14 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// checkpoint. Nothing opened since the leave carries on.
     /// Then the Current Room and map-spawn segments starting in this room
     /// open where atStart says the player is at their start, as on a
-    /// Restart, and after a Save and Quit the Heart Respawn ones too. One
+    /// Restart, and after a Save and Quit the Heart Respawn ones too; the
+    /// Chapter Load ones when the load played the chapter's intro. One
     /// carried on is not opened again. True when the run goes on: after a
     /// Save and Quit, anything that can still record carried on; from the
     /// map, a segment that already holds something it requires (one that
     /// holds nothing is a twin the run never played for).
     public bool Reentered(LeaveKind kind, string scope, string room, long reading, bool control, bool launching,
-        Func<SegmentRule, bool> atStart) {
+        Func<SegmentRule, bool> atStart, bool chapterLoad = false) {
         open.Clear();
         pending.Clear();
         pendingRoom = null;
@@ -422,7 +424,8 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         aside.Clear();
         OpenAt(scope, room, reading, control, launching, standalone: true,
             rule => rule.Setup != StartSetup.NextRoom
-                    && (kind == LeaveKind.SaveAndQuit || rule.Setup != StartSetup.HeartRespawn) && atStart(rule),
+                    && (kind == LeaveKind.SaveAndQuit || rule.Setup != StartSetup.HeartRespawn)
+                    && (chapterLoad || rule.Setup != StartSetup.ChapterLoad) && atStart(rule),
             fromLoad: false, kind == LeaveKind.SaveAndQuit ? Opening.SaveAndQuit : Opening.Other);
         return carried;
     }
