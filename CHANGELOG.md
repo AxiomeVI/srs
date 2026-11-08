@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v4.1.0 — 2026-11-08
 
 - **5A's berry Start and Depths also record on the route that walks on into Depths.** Take every berry of Start and walk into Depths' first room from `a-13`: `ARB Start` ends there, and `ARB Depths` starts there. Both are ranked against the same rows as the route that returns to the map, which still records. Walk into Depths with a berry left and `ARB Start` can then only end with a Return to Map: walking into Depths again drops it.
 - **1A's berry checkpoints also start on a walk-in.** `ARB Crossing`, `ARB Crossing to Heart`, `ARB Crossing to RTM`, `ARB Crossing-2` and `FC Crossing to RTM` start when you walk into room `6` from `5`, and `ARB Chasm`, `ARB Chasm-2` and `FC Chasm-2` when you walk into `9b` from `9`, as well as on the checkpoint's spawn. They require the same berries either way.
