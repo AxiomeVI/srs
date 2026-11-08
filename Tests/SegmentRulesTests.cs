@@ -494,16 +494,34 @@ public class SegmentRulesTests {
         Assert.False(rule.ChapterRun);
     }
 
-    // the eleven rows that end on a Return to Map, and nothing else does
+    // the ten rows that end on a Return to Map, and nothing else does
     [Fact]
     public void TheRowsThatEndOnAReturnToMap() {
         Assert.Equal(
             ["1a/ARB Start to RTM", "1a/ARB Crossing to RTM", "1a/ARB Heart to RTM", "1a/ARB Crossing-2", "1a/ARB Chasm-2",
-             "4a/ARB Old Trail (to RTM)", "5a/ARB Start", "7a/ARB 2500m-2",
+             "4a/ARB Old Trail (to RTM)", "7a/ARB 2500m-2",
              "1a/FC Heart to RTM", "1a/FC Crossing to RTM", "1a/FC Chasm-2"],
             SegmentRules.All.Where(r => r.End == EndKind.ReturnToMap).Select(r => $"{r.Scope}/{r.Name}"));
         Assert.All(SegmentRules.All.Where(r => r.End == EndKind.ReturnToMap),
             r => Assert.Equal((Collectibles.None, false), (r.EndsOn, r.ChapterRun)));
+    }
+
+    // 5A's berry Start, alone: its route walks into Depths or returns to the
+    // map, and both are ranked on the one row
+    [Fact]
+    public void TheRowThatMayReturnToTheMap() {
+        Assert.Equal(["5a/ARB Start"],
+            SegmentRules.All.Where(r => r.MayReturnToMap).Select(r => $"{r.Scope}/{r.Name}"));
+        Assert.Equal(EndKind.NextStart, Rule("5a", "ARB Start").End);
+    }
+
+    // the map-spawn rows a walk-in from the checkpoint before opens too
+    [Fact]
+    public void TheMapSpawnRowsThatAlsoWalkIn() {
+        Assert.Equal(
+            ["1a/ARB Crossing to Heart", "1a/ARB Crossing to RTM", "1a/ARB Crossing", "1a/ARB Chasm",
+             "1a/ARB Crossing-2", "1a/ARB Chasm-2", "5a/ARB Depths", "1a/FC Crossing to RTM", "1a/FC Chasm-2"],
+            SegmentRules.All.Where(r => r.AlsoWalkIn).Select(r => $"{r.Scope}/{r.Name}"));
     }
 
     // the two rows that start on the next room entered, which no list of start

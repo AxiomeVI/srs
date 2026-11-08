@@ -16,8 +16,8 @@ internal interface IRoomMap {
     string EndRoomOf(SegmentRule rule);
 
     /// The room the rule's start room must be entered from; null when the rule
-    /// never opens on an entry (a chapter's Start, 7A's start, a map-spawn or
-    /// heart-respawn row).
+    /// never opens on an entry (a chapter's Start, 7A's start, a map-spawn row
+    /// that does not also walk in, a heart-respawn row).
     string EntryRoomOf(SegmentRule rule);
 
     /// The berries the rule requires, as EntityID keys. Null or empty
@@ -188,17 +188,19 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             }
         }
 
+        Predicate<OpenSegment> fromItsEntry = segment => from != null && SuccessorEntryOf(segment.Rule, scope, room) == from;
         List<SegmentRecord> records = CloseWhere(
-            segment => segment.Rule.End == EndKind.NextStart && Rooms.EndRoomOf(segment.Rule) == room,
-            reading, end, records: segment => from != null && SuccessorEntryOf(segment.Rule, scope, room) == from);
+            segment => segment.Rule.End == EndKind.NextStart && Rooms.EndRoomOf(segment.Rule) == room
+                       // one that may still return to the map goes on, unless it is met here
+                       && (!segment.Rule.MayReturnToMap || (fromItsEntry(segment) && Met(segment, reading, end) != null)),
+            reading, end, records: fromItsEntry);
         CloseWhere(segment => segment.Rule.End == EndKind.Restart && Rooms.EndRoomOf(segment.Rule) == room,
             reading, end, records: _ => false);
         pending.Clear();
         pendingRoom = null;
         if (entry) {
             OpenAt(scope, room, reading, control, launching, standalone: false,
-                rule => rule.Setup is not (StartSetup.MapSpawn or StartSetup.HeartRespawn)
-                        && Rooms.EntryRoomOf(rule) == from,
+                rule => rule.OpensOnWalkIn && Rooms.EntryRoomOf(rule) == from,
                 fromLoad: false, Opening.WalkIn);
         }
 
@@ -222,11 +224,12 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
 
     // the room the row after `ending` is entered from, on its own route: the
     // first row starting in this room of the same family, berry or plain,
-    // else the first of the other. A map-spawn or heart-respawn row follows nothing
+    // else the first of the other. A map-spawn or heart-respawn row follows
+    // nothing, unless a walk-in opens it too
     private string SuccessorEntryOf(SegmentRule ending, string scope, string room) {
         string other = null;
         foreach (SegmentRule rule in rules) {
-            if (rule.Scope != scope || rule.Setup is StartSetup.MapSpawn or StartSetup.HeartRespawn
+            if (rule.Scope != scope || !rule.OpensOnWalkIn
                 || Rooms.StartRoomOf(rule) != room || Rooms.EntryRoomOf(rule) is not { } entry) {
                 continue;
             }
@@ -333,7 +336,8 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         List<SegmentRecord> records = kind switch {
             LeaveKind.ChapterEnd => ChapterTimeStopped(reading, end),
             LeaveKind.ReturnToMap => CloseWhere(
-                segment => segment.Rule.End == EndKind.ReturnToMap || segment.Rule.SpansLeaves, reading, end),
+                segment => segment.Rule.End == EndKind.ReturnToMap || segment.Rule.SpansLeaves
+                           || segment.Rule.MayReturnToMap, reading, end),
             _ => [],
         };
         open.Clear();

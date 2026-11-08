@@ -45,6 +45,8 @@ public class SheetConsistencyTests {
             .Select(rule => $"{rule.Scope}/{rule.Name}")
             .ToList();
         Assert.Empty(wrong);
+        Assert.All(SegmentRules.All.Where(rule => rule.AlsoWalkIn),
+            rule => Assert.Contains((rule.Scope, rule.Anchor), SegmentAutoDetect.EntryRooms.Keys));
 
         Assert.All(SegmentAutoDetect.EntryRooms.Keys, key => Assert.Contains(key, Anchors));
         Assert.DoesNotContain(SegmentAutoDetect.EntryRooms.Keys, key => key.GameName == "Start");

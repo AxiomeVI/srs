@@ -28,7 +28,8 @@ internal enum StartSetup {
     // valid from its start point: in a chain, or from a savestate at the start room's spawn
     CurrentRoom,
     // valid only from the checkpoint's own spawn: the checkpoint loaded from
-    // the map, or a savestate there; never by walking in
+    // the map, or a savestate there; never by walking in, unless the row
+    // also walks in (SegmentRule.AlsoWalkIn)
     MapSpawn,
     // valid only from the respawn of a Save and Quit taken once the heart is
     // collected, or from a savestate there; never by walking in, nor on any
@@ -84,6 +85,16 @@ internal sealed record SegmentRule(
     /// A chapter row whose route returns to the map: a Return to Map and a
     /// chapter's end it does not finish on set it aside (RunTracker.Left).
     public bool SpansLeaves { get; init; }
+
+    /// A NextStart row whose route may return to the map instead: its end
+    /// room ends it only with all it requires, and a Return to Map ends it too.
+    public bool MayReturnToMap { get; init; }
+
+    /// A map-spawn row that a walk-in from its entry room opens too.
+    public bool AlsoWalkIn { get; init; }
+
+    /// Whether walking into its start room from its entry room opens it.
+    public bool OpensOnWalkIn => Setup is not (StartSetup.MapSpawn or StartSetup.HeartRespawn) || AlsoWalkIn;
 
     /// A row that starts after a wake-up (SegmentAutoDetect.WakeUpSpawns): how
     /// it was opened says whether a Save and Quit came before its run.

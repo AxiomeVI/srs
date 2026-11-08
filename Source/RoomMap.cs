@@ -116,10 +116,11 @@ internal sealed class RoomMap : IRoomMap {
         return null;
     }
 
-    // a map-spawn or heart-respawn row is never entered; a row with an entry
+    // a map-spawn or heart-respawn row is never entered, unless a walk-in opens
+    // it too (5A's berry Depths); a row with an entry
     // of its own keeps it (4A's berry Cliff Face), the others take their anchor's
     public string EntryRoomOf(SegmentRule rule) {
-        if (rule.Scope != scope || rule.Setup is StartSetup.MapSpawn or StartSetup.HeartRespawn) {
+        if (rule.Scope != scope || !rule.OpensOnWalkIn) {
             return null;
         }
 

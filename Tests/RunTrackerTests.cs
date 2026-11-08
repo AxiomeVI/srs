@@ -26,10 +26,11 @@ public class RunTrackerTests {
         EndKind endKind = EndKind.NextStart, Collectibles endsOn = Collectibles.None, int? dashes = null,
         StartKind startKind = StartKind.Room, StartSetup setup = StartSetup.NextRoom, long head = 0, long tail = 0,
         bool berries = false, string scope = "1a", string entry = null, int gems = 0, bool spans = false,
-        bool afterWakeUp = false, bool noNote = false) {
+        bool afterWakeUp = false, bool noNote = false, bool mayReturnToMap = false, bool alsoWalkIn = false) {
         SegmentRule rule = new(scope, name, name, startKind, setup, endKind, endsOn, requires, dashes,
             head, tail, rules.Count) { Berries = berries ? BerrySet.WholeChapter : null, Gems = gems, SpansLeaves = spans,
-                AfterWakeUp = afterWakeUp, NoSaveAndQuitNote = noNote };
+                AfterWakeUp = afterWakeUp, NoSaveAndQuitNote = noNote, MayReturnToMap = mayReturnToMap,
+                AlsoWalkIn = alsoWalkIn };
         rules.Add(rule);
         rooms.ByName[name] = (start, end);
         if (entry != null) {
@@ -1359,11 +1360,15 @@ public class RunTrackerTests {
         Assert.Empty(t.Open);
     }
 
-    // 5A's berry Start walks into Depths' room and back before it leaves
-    [Fact]
-    public void AReturnToMapRowDoesNotEndOnARoomEntry() {
+    // walking into the next checkpoint's room with a berry left ends nothing,
+    // for a row that ends on a Return to Map or may (5A's berry Start)
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AReturnToMapRowDoesNotEndOnARoomEntryShortOfABerry(bool mayReturnToMap) {
         Add("Start", "a-00", "b-00", setup: StartSetup.CurrentRoom);
-        Add("ARB Start", "a-00", "b-00", endKind: EndKind.ReturnToMap, setup: StartSetup.CurrentRoom, berries: true);
+        Add("ARB Start", "a-00", "b-00", endKind: mayReturnToMap ? EndKind.NextStart : EndKind.ReturnToMap,
+            setup: StartSetup.CurrentRoom, berries: true, mayReturnToMap: mayReturnToMap);
         Add("Depths", "b-00", null, entry: "a-13");
         rooms.Berries["ARB Start"] = ["b1", "b2"];
         RunTracker t = Tracker();
@@ -1376,6 +1381,92 @@ public class RunTrackerTests {
         t.BerryCollected("b2");
 
         Assert.Equal([("ARB Start", 300L)], Of(t.Left(LeaveKind.ReturnToMap, 300, One)));
+    }
+
+    // 5A's berry Start on the route that walks on: every berry, then Depths' room
+    [Fact]
+    public void ARowThatMayReturnToTheMapEndsAtItsEndWithEverything() {
+        Add("Start", "a-00", "b-00", setup: StartSetup.CurrentRoom);
+        Add("ARB Start", "a-00", "b-00", setup: StartSetup.CurrentRoom, berries: true, mayReturnToMap: true);
+        Add("Depths", "b-00", null, entry: "a-13");
+        rooms.Berries["ARB Start"] = ["b1", "b2"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "a-00", 0, true, false, _ => true);
+        t.BerryCollected("b1");
+        t.BerryCollected("b2");
+
+        Assert.Equal([("Start", 100L), ("ARB Start", 100L)],
+            Of(t.RoomEntered("1a", "a-13", "b-00", 100, true, false, One)));
+        Assert.Equal(["Depths"], t.Open.Select(r => r.Name));
+    }
+
+    // a berry following into Depths' room counts there, as at any end
+    [Fact]
+    public void ARowThatMayReturnToTheMapCountsABerryFollowingAtItsEnd() {
+        Add("ARB Start", "a-00", "b-00", setup: StartSetup.CurrentRoom, berries: true, mayReturnToMap: true);
+        Add("Depths", "b-00", null, entry: "a-13");
+        rooms.Berries["ARB Start"] = ["b1", "b2"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "a-00", 0, true, false, _ => true);
+        t.BerryCollected("b1");
+
+        Assert.Equal([("ARB Start", 100L)],
+            Of(t.RoomEntered("1a", "a-13", "b-00", 100, true, false, new EndState(1, ["b2"]))));
+    }
+
+    // 5A's berry Depths, after the berry Start that walks on: opened by the
+    // walk-in, where a map-spawn row without it waits for the map
+    [Fact]
+    public void AMapSpawnRowThatAlsoWalksInOpensOnTheWalkIn() {
+        Add("ARB Start", "a-00", "b-00", setup: StartSetup.CurrentRoom, berries: true, mayReturnToMap: true);
+        Add("Depths", "b-00", "c-00", entry: "a-13");
+        Add("ARB Depths", "b-00", "c-00", setup: StartSetup.MapSpawn, berries: true, entry: "a-13", alsoWalkIn: true);
+        Add("FC Depths", "b-00", "c-00", setup: StartSetup.MapSpawn, berries: true, entry: "a-13");
+        Add("Unravelling", "c-00", null, entry: "b-20");
+        rooms.Berries["ARB Start"] = ["b1"];
+        rooms.Berries["ARB Depths"] = ["d1"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "a-00", 0, true, false, _ => true);
+        t.BerryCollected("b1");
+        Assert.Equal([("ARB Start", 100L)], Of(t.RoomEntered("1a", "a-13", "b-00", 100, true, false, One)));
+        Assert.Equal(["Depths", "ARB Depths"], t.Open.Select(r => r.Name));
+        t.BerryCollected("d1");
+
+        Assert.Equal([("Depths", 200L), ("ARB Depths", 200L)],
+            Of(t.RoomEntered("1a", "b-20", "c-00", 300, true, false, One)));
+    }
+
+    // and it still opens on its checkpoint's spawn
+    [Fact]
+    public void AMapSpawnRowThatAlsoWalksInOpensOnItsSpawn() {
+        Add("ARB Depths", "b-00", "c-00", setup: StartSetup.MapSpawn, berries: true, entry: "a-13", alsoWalkIn: true);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "b-00", 0, true, false, _ => true);
+
+        Assert.Equal(["ARB Depths"], t.Open.Select(r => r.Name));
+    }
+
+    // a chapter's end is no end of it: dropped, like a row that ends on
+    // entering the next checkpoint
+    [Fact]
+    public void ARowThatMayReturnToTheMapIsDroppedByAChaptersEnd() {
+        Add("ARB Start", "a-00", "b-00", setup: StartSetup.CurrentRoom, berries: true, mayReturnToMap: true);
+        Add("Depths", "b-00", null, entry: "a-13");
+        rooms.Berries["ARB Start"] = ["b1", "b2"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "a-00", 0, true, false, _ => true);
+        t.BerryCollected("b1");
+        t.RoomEntered("1a", "a-13", "b-00", 100, true, false, One);
+        t.BerryCollected("b2");
+
+        Assert.Equal(["Depths"], Of(t.ChapterTimeStopped(500, One)).Select(r => r.Item1));
+        Assert.Empty(t.Left(LeaveKind.ChapterEnd, 500, One));
+        Assert.Empty(t.Open);
     }
 
     // nor on chapter time stopping: a chapter's end drops it like any row

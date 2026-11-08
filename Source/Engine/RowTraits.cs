@@ -6,12 +6,15 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// the checkpoint's map spawn, a heart that ends the row or is only required,
 /// an end on a Return to Map, an entry room of its own, a berry set that is
 /// not its checkpoint's or none at all, a dash count, a chapter row whose
-/// route returns to the map, a row with no Save and Quit dropdown. A Full
+/// route returns to the map, a checkpoint row whose route may return to the
+/// map instead, a map-spawn row that a walk-in opens too, a row with no Save
+/// and Quit dropdown. A Full
 /// Clear label says nothing: all it requires is here.
 internal readonly record struct RowTraits(
     bool MapSpawn = false, bool EndsOnHeart = false, Collectibles Requires = Collectibles.None,
     string EntryRoom = null, BerrySet Berries = null, bool NoBerries = false, int? Dashes = null,
-    bool EndsOnReturnToMap = false, bool SpansLeaves = false, bool NoSaveAndQuitNote = false) {
+    bool EndsOnReturnToMap = false, bool SpansLeaves = false, bool NoSaveAndQuitNote = false,
+    bool MayReturnToMap = false, bool AlsoWalkIn = false) {
     private const Collectibles Heart = Collectibles.Heart;
     private const Collectibles Cassette = Collectibles.Cassette;
     private const Collectibles Gem = Collectibles.Gem;
@@ -31,15 +34,17 @@ internal readonly record struct RowTraits(
     internal static readonly Dictionary<(string Scope, string Name), RowTraits> All = new() {
         // 7zb is Crossing's far berry, taken from Start on that route
         [("1a", "ARB Start to RTM")] = new(EndsOnReturnToMap: true, Berries: new BerrySet("Start", Rooms: ["7zb"])),
-        [("1a", "ARB Crossing to RTM")] = new(MapSpawn: true, EndsOnReturnToMap: true, Requires: Heart, Berries: CrossingToRtmBerries),
+        // 1A's Crossing and Chasm rows of both berry tabs open on their map
+        // spawn and on a walk-in from the checkpoint before (owner)
+        [("1a", "ARB Crossing to RTM")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Requires: Heart, Berries: CrossingToRtmBerries),
         [("1a", "ARB Heart to RTM")] = new(EndsOnReturnToMap: true, Berries: HeartToRtmBerries),
-        [("1a", "ARB Crossing-2")] = new(MapSpawn: true, EndsOnReturnToMap: true, Berries: new BerrySet(Rooms: ["7zb"])),
-        [("1a", "ARB Chasm-2")] = new(MapSpawn: true, EndsOnReturnToMap: true, Berries: ChasmTwoBerries),
+        [("1a", "ARB Crossing-2")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Berries: new BerrySet(Rooms: ["7zb"])),
+        [("1a", "ARB Chasm-2")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Berries: ChasmTwoBerries),
         [("1a", "ARB Start to Heart")] = new(EndsOnHeart: true, NoSaveAndQuitNote: true, Berries: new BerrySet("Start", Rooms: ["6", "s1"])),
-        [("1a", "ARB Crossing to Heart")] = new(MapSpawn: true, EndsOnHeart: true, NoSaveAndQuitNote: true, Berries: new BerrySet(Rooms: ["6", "s1"])),
+        [("1a", "ARB Crossing to Heart")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnHeart: true, NoSaveAndQuitNote: true, Berries: new BerrySet(Rooms: ["6", "s1"])),
         // 7zb, and 11 and 10zb, belong to the rows that return to the map
-        [("1a", "ARB Crossing")] = new(MapSpawn: true, Requires: Heart, Berries: new BerrySet("Crossing", Except: ["7zb"])),
-        [("1a", "ARB Chasm")] = new(MapSpawn: true, Berries: new BerrySet("Chasm", Except: ["11", "10zb"])),
+        [("1a", "ARB Crossing")] = new(MapSpawn: true, AlsoWalkIn: true, Requires: Heart, Berries: new BerrySet("Crossing", Except: ["7zb"])),
+        [("1a", "ARB Chasm")] = new(MapSpawn: true, AlsoWalkIn: true, Berries: new BerrySet("Chasm", Except: ["11", "10zb"])),
         [("1a", "ARB IL")] = new(Requires: Heart, SpansLeaves: true),
         [("3a", "ARB Huge Mess")] = new(Requires: Heart),
         [("3a", "ARB IL")] = new(Requires: Heart),
@@ -50,9 +55,11 @@ internal readonly record struct RowTraits(
         // d-00 is entered from c-08 on the A-side, and from the berry room here
         [("4a", "ARB Cliff Face")] = new(EntryRoom: "c-10"),
         [("4a", "ARB IL")] = new(Requires: Heart, SpansLeaves: true),
-        // the route walks into Depths' room and back before it returns to the map
-        [("5a", "ARB Start")] = new(EndsOnReturnToMap: true),
-        [("5a", "ARB Depths")] = new(MapSpawn: true),
+        // one route walks into Depths' room and back before it returns to the
+        // map, the other walks on into Depths
+        [("5a", "ARB Start")] = new(MayReturnToMap: true),
+        // from the map after the route that returns to it, walked into after the other
+        [("5a", "ARB Depths")] = new(MapSpawn: true, AlsoWalkIn: true),
         [("5a", "ARB IL")] = new(SpansLeaves: true),
         // f-01 is 2500m's left berry: the first piece skips it, the second fetches it
         [("7a", "ARB 2500m-1")] = new(Berries: new BerrySet("2500 M", Except: ["f-01"])),
@@ -63,8 +70,8 @@ internal readonly record struct RowTraits(
         [("7a", "ARB Nodraft")] = new(Berries: new BerrySet(Rooms: ["g-03"])),
         [("7a", "ARB IL")] = new(SpansLeaves: true),
         [("1a", "FC Heart to RTM")] = new(EndsOnReturnToMap: true, Requires: Cassette, Berries: HeartToRtmBerries),
-        [("1a", "FC Crossing to RTM")] = new(MapSpawn: true, EndsOnReturnToMap: true, Requires: Heart | Cassette, Berries: CrossingToRtmBerries),
-        [("1a", "FC Chasm-2")] = new(MapSpawn: true, EndsOnReturnToMap: true, Requires: Cassette, Berries: ChasmTwoBerries),
+        [("1a", "FC Crossing to RTM")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Requires: Heart | Cassette, Berries: CrossingToRtmBerries),
+        [("1a", "FC Chasm-2")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Requires: Cassette, Berries: ChasmTwoBerries),
         [("1a", "FC IL")] = new(Requires: Heart | Cassette, SpansLeaves: true),
         // the heart of 2A's Start is a row of its own, ended by Restart Chapter
         [("2a", "FC Start")] = new(Requires: Cassette),
