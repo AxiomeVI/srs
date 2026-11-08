@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v4.2.0 — 2026-11-08
 
 - **8A's Start rows start only when Core is loaded from its beginning**: from chapter select, `console load`, Restart Chapter, or Continue after a Save and Quit in its first room. A savestate, a room teleport or the debug map no longer starts `8a Start`, `8a IL`, `8a IL Tape Clear`, `8arb IL` or `8afc IL`. Their times do not change: the chapter clock does not run during Core's walk-in.
 
