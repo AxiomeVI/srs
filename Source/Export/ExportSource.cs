@@ -24,7 +24,7 @@ internal static class ExportSource {
             int side = sheetRow.Scope == playing ? -1
                 : Array.FindIndex(SheetRows.All, other => other.Scope == sheetRow.Scope);
             PendingUpdate update = PendingUpdate.Create(row, DisplayName(run),
-                run.Ticks, remote, run.Note, RemoteBests.IsDuplicate(row), RankOffsetOf(run, remote));
+                run.Ticks, remote, run.Note, RemoteBests.IsDuplicate(row), RankOffsetOf(run, remote), run.ReturnToMap);
             found.Add(((update.Improves ? 0 : 1, side, Array.IndexOf(SheetRows.All, sheetRow)), update));
         }
 

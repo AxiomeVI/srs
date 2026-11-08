@@ -63,7 +63,7 @@ internal static class SegmentRules {
                 i) {
                 ChapterRun = chapterRun, Berries = berries, EntryRoom = traits.EntryRoom,
                 SpansLeaves = traits.SpansLeaves, MayReturnToMap = traits.MayReturnToMap,
-                AlsoWalkIn = traits.AlsoWalkIn,
+                AlsoWalkIn = traits.AlsoWalkIn, SpansReturnToMap = traits.SpansReturnToMap,
                 AfterWakeUp = SegmentAutoDetect.WakeUpSpawns.ContainsKey(anchor),
                 NoSaveAndQuitNote = traits.NoSaveAndQuitNote,
                 Gems = (marked & Collectibles.Gem) == Collectibles.None ? 0 : chapterRun ? ChapterGems : 1,

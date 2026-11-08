@@ -69,4 +69,13 @@ public class RunBookTests {
         Run only = Assert.Single(book.All);
         Assert.Equal((Ticks(44), SaveAndQuitNote.With), (only.Ticks, only.Note));
     }
+
+    [Fact]
+    public void TheBestKeepsItsReturnToMapNote() {
+        RunBook book = new();
+        book.Offer([new SegmentRecord(TestRules.Find("5a", "ARB Start"), Ticks(96), SaveAndQuitNote.Without,
+            ReturnToMapNote.With)]);
+
+        Assert.Equal(ReturnToMapNote.With, Assert.Single(book.All).ReturnToMap);
+    }
 }

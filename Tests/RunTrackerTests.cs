@@ -26,11 +26,12 @@ public class RunTrackerTests {
         EndKind endKind = EndKind.NextStart, Collectibles endsOn = Collectibles.None, int? dashes = null,
         StartKind startKind = StartKind.Room, StartSetup setup = StartSetup.NextRoom, long head = 0, long tail = 0,
         bool berries = false, string scope = "1a", string entry = null, int gems = 0, bool spans = false,
-        bool afterWakeUp = false, bool noNote = false, bool mayReturnToMap = false, bool alsoWalkIn = false) {
+        bool afterWakeUp = false, bool noNote = false, bool mayReturnToMap = false, bool alsoWalkIn = false,
+        bool spansReturnToMap = false) {
         SegmentRule rule = new(scope, name, name, startKind, setup, endKind, endsOn, requires, dashes,
             head, tail, rules.Count) { Berries = berries ? BerrySet.WholeChapter : null, Gems = gems, SpansLeaves = spans,
                 AfterWakeUp = afterWakeUp, NoSaveAndQuitNote = noNote, MayReturnToMap = mayReturnToMap,
-                AlsoWalkIn = alsoWalkIn };
+                AlsoWalkIn = alsoWalkIn, SpansReturnToMap = spansReturnToMap };
         rules.Add(rule);
         rooms.ByName[name] = (start, end);
         if (entry != null) {
@@ -48,6 +49,98 @@ public class RunTrackerTests {
 
     private static List<(string, long)> Of(List<SegmentRecord> records) =>
         records.Select(r => (r.Rule.Name, r.Ticks)).ToList();
+
+    // 7A's Full Clear 2000m: the gem, a Return to Map, then on from the
+    // checkpoint's spawn to 2500m. A row that does not span one is dropped
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ARowThatSpansAReturnToMapGoesOnFromItsSpawn(bool spans) {
+        Add("2000m", "d-00", "e-00", requires: Collectibles.Gem, scope: "7a", entry: "c-09", spansReturnToMap: spans);
+        Add("2500m", "e-00", "f-00", scope: "7a", entry: "d-10");
+        RunTracker t = Tracker();
+
+        t.Restart("7a", "c-09", 0, true, false, _ => false);
+        t.RoomEntered("7a", "c-09", "d-00", 100, true, false, One);
+        t.Collected(Collectibles.Gem, 300, One);
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 400, One));
+        Assert.Equal(spans, t.Reentered(LeaveKind.ReturnToMap, "7a", "d-00", 50, true, false, _ => false));
+        List<SegmentRecord> records = t.RoomEntered("7a", "d-10", "e-00", 250, true, false, One);
+
+        if (spans) {
+            // both pieces: 400 - 100, then 250 - 50
+            Assert.Equal([("2000m", 500L)], Of(records));
+            Assert.Equal(ReturnToMapNote.With, records[0].ReturnToMap);
+        } else {
+            Assert.Empty(records);
+        }
+    }
+
+    // the session from the map is new: a death in the checkpoint's first room
+    // zeroes chapter time, and the row keeps what it had
+    [Fact]
+    public void ARowThatSpansAReturnToMapSurvivesTheClockZeroing() {
+        Add("2000m", "d-00", "e-00", requires: Collectibles.Gem, scope: "7a", entry: "c-09", spansReturnToMap: true);
+        Add("2500m", "e-00", "f-00", scope: "7a", entry: "d-10");
+        RunTracker t = Tracker();
+
+        t.Restart("7a", "c-09", 0, true, false, _ => false);
+        t.RoomEntered("7a", "c-09", "d-00", 100, true, false, One);
+        t.Collected(Collectibles.Gem, 300, One);
+        t.Left(LeaveKind.ReturnToMap, 400, One);
+        t.Reentered(LeaveKind.ReturnToMap, "7a", "d-00", 0, true, false, _ => false);
+        Assert.True(t.ClockZeroed("7a", "d-00", 80, 0, true, false, _ => false));
+
+        // 400 - 100, 80 before the death, then 150
+        Assert.Equal([("2000m", 530L)], Of(t.RoomEntered("7a", "d-10", "e-00", 150, true, false, One)));
+    }
+
+    // a second one, with nothing fetched in between, is not a chapter row's try
+    [Fact]
+    public void ARowThatSpansAReturnToMapSurvivesASecondOne() {
+        Add("2000m", "d-00", "e-00", requires: Collectibles.Gem, scope: "7a", entry: "c-09", spansReturnToMap: true);
+        Add("2500m", "e-00", "f-00", scope: "7a", entry: "d-10");
+        RunTracker t = Tracker();
+
+        t.Restart("7a", "c-09", 0, true, false, _ => false);
+        t.RoomEntered("7a", "c-09", "d-00", 100, true, false, One);
+        t.Collected(Collectibles.Gem, 300, One);
+        t.Left(LeaveKind.ReturnToMap, 400, One);
+        t.Reentered(LeaveKind.ReturnToMap, "7a", "d-00", 0, true, false, _ => false);
+        t.Left(LeaveKind.ReturnToMap, 100, One);
+        t.Reentered(LeaveKind.ReturnToMap, "7a", "d-00", 0, true, false, _ => false);
+
+        Assert.Equal([("2000m", 500L)], Of(t.RoomEntered("7a", "d-10", "e-00", 100, true, false, One)));
+    }
+
+    // another checkpoint, or a room it walked into, would skip part of it
+    [Theory]
+    [InlineData("e-00")]
+    [InlineData("d-01")]
+    public void ARowThatSpansAReturnToMapGoesOnOnlyFromItsOwnSpawn(string picked) {
+        Add("2000m", "d-00", "e-00", scope: "7a", entry: "c-09", spansReturnToMap: true);
+        RunTracker t = Tracker();
+
+        t.Restart("7a", "c-09", 0, true, false, _ => false);
+        t.RoomEntered("7a", "c-09", "d-00", 100, true, false, One);
+        t.RoomEntered("7a", "d-00", "d-01", 200, true, false, One);
+        t.Left(LeaveKind.ReturnToMap, 400, One);
+        t.Reentered(LeaveKind.ReturnToMap, "7a", picked, 0, true, false, _ => false);
+
+        Assert.Empty(t.Open);
+    }
+
+    [Fact]
+    public void TheReturnToMapNoteSaysWhetherTheRunReturnedToTheMap() {
+        Add("Start to RTM", "1", "6", endKind: EndKind.ReturnToMap, setup: StartSetup.CurrentRoom);
+        Add("Start", "1", "6", setup: StartSetup.CurrentRoom);
+        Add("Crossing", "6", "9b", entry: "5");
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        Assert.Equal(ReturnToMapNote.Without, Assert.Single(t.RoomEntered("1a", "5", "6", 100, true, false, One)).ReturnToMap);
+        Assert.Equal(ReturnToMapNote.With, Assert.Single(t.Left(LeaveKind.ReturnToMap, 150, One)).ReturnToMap);
+    }
 
     [Fact]
     public void ABacktrackIntoAStartRoomOpensNothing() {

@@ -515,6 +515,14 @@ public class SegmentRulesTests {
         Assert.Equal(EndKind.NextStart, Rule("5a", "ARB Start").End);
     }
 
+    // the routes that return to the map inside the checkpoint and go on to the next one
+    [Fact]
+    public void TheRowsThatSpanAReturnToMap() {
+        List<SegmentRule> spanning = SegmentRules.All.Where(r => r.SpansReturnToMap).ToList();
+        Assert.Equal(["7a/FC 2000m", "7a/FC 2500m"], spanning.Select(r => $"{r.Scope}/{r.Name}"));
+        Assert.All(spanning, r => Assert.Equal(EndKind.NextStart, r.End));
+    }
+
     // its label ends in RC, but the row ends on the heart (owner)
     [Fact]
     public void TwoAStartsHeartRowEndsOnTheHeart() {

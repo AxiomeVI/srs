@@ -7,14 +7,14 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// an end on a Return to Map, an entry room of its own, a berry set that is
 /// not its checkpoint's or none at all, a dash count, a chapter row whose
 /// route returns to the map, a checkpoint row whose route may return to the
-/// map instead, a map-spawn row that a walk-in opens too, a row with no Save
-/// and Quit dropdown. A Full
-/// Clear label says nothing: all it requires is here.
+/// map instead, a checkpoint row whose route returns to the map inside it, a
+/// map-spawn row that a walk-in opens too, a row with no Save and Quit
+/// dropdown. A Full Clear label says nothing: all it requires is here.
 internal readonly record struct RowTraits(
     bool MapSpawn = false, bool EndsOnHeart = false, Collectibles Requires = Collectibles.None,
     string EntryRoom = null, BerrySet Berries = null, bool NoBerries = false, int? Dashes = null,
     bool EndsOnReturnToMap = false, bool SpansLeaves = false, bool NoSaveAndQuitNote = false,
-    bool MayReturnToMap = false, bool AlsoWalkIn = false) {
+    bool MayReturnToMap = false, bool AlsoWalkIn = false, bool SpansReturnToMap = false) {
     private const Collectibles Heart = Collectibles.Heart;
     private const Collectibles Cassette = Collectibles.Cassette;
     private const Collectibles Gem = Collectibles.Gem;
@@ -91,8 +91,10 @@ internal readonly record struct RowTraits(
         [("7a", "FC 500m")] = new(Requires: Gem),
         [("7a", "FC 1000m")] = new(Requires: Gem),
         [("7a", "FC 1500m")] = new(Requires: Gem | Cassette),
-        [("7a", "FC 2000m")] = new(Requires: Gem),
-        [("7a", "FC 2500m")] = new(Requires: Gem),
+        // the route returns to the map inside the checkpoint, and goes on from
+        // its spawn to the next one (owner)
+        [("7a", "FC 2000m")] = new(Requires: Gem, SpansReturnToMap: true),
+        [("7a", "FC 2500m")] = new(Requires: Gem, SpansReturnToMap: true),
         [("7a", "FC 3000m")] = new(Requires: Heart),
         [("7a", "FC Downdraft")] = new(Requires: Heart, Berries: DowndraftBerries),
         [("7a", "FC IL")] = new(Requires: Gem | Cassette | Heart),

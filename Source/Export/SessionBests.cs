@@ -29,6 +29,10 @@ internal static class SessionBests {
             if (run.Note != SaveAndQuitNote.Without) {
                 Logger.Log(LogLevel.Info, LogTag, $"session note {run.Scope}/{run.Name} {run.Note}");
             }
+
+            if (run.ReturnToMap != ReturnToMapNote.Without) {
+                Logger.Log(LogLevel.Info, LogTag, $"session return to map {run.Scope}/{run.Name} {run.ReturnToMap}");
+            }
         }
 
         return improved.Count > 0;

@@ -204,6 +204,16 @@ public class PendingUpdateTests {
     private static readonly string[] SqOptions = ["S&Q", "No S&Q", "FileTime"];
 
     [Fact]
+    public void AnRtmDropdownTakesTheRunsReturnToMapNote() {
+        RemoteRow remote = Dropdown("1:40.000", "RTM", ["RTM", "No RTM"], group: "5arb Start");
+        PendingUpdate update = PendingUpdate.Create(Crossing, "Crossing", Ticks(95.0), remote,
+            SaveAndQuitNote.Without, false, 0, ReturnToMapNote.Without);
+
+        Assert.Equal("No RTM", update.Timing);
+        Assert.True(update.Selected);
+    }
+
+    [Fact]
     public void AFileTimeRowIsJudgedOnItsConvertedTime() {
         // 70 s entered as FileTime with a 5 s buffer is 65 s on the measured basis
         RemoteRow remote = Dropdown("1:10.000", "FileTime", SqOptions, buffer: 5);

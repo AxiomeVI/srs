@@ -5,7 +5,8 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// The session's best of every row, game-free so the tests can pin what a run
 /// replaces. A row's best is replaced only by a faster run of that same row.
 internal sealed class RunBook {
-    internal readonly record struct Run(string Scope, string Name, long Ticks, SaveAndQuitNote Note);
+    internal readonly record struct Run(string Scope, string Name, long Ticks, SaveAndQuitNote Note,
+        ReturnToMapNote ReturnToMap = ReturnToMapNote.Unknown);
 
     private readonly Dictionary<(string Scope, string Name), Run> best = [];
 
@@ -20,7 +21,7 @@ internal sealed class RunBook {
                 continue;
             }
 
-            Run run = new(rule.Scope, rule.Name, record.Ticks, record.Note);
+            Run run = new(rule.Scope, rule.Name, record.Ticks, record.Note, record.ReturnToMap);
             best[(rule.Scope, rule.Name)] = run;
             improved.Add(run);
         }

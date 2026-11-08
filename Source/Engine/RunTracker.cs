@@ -32,8 +32,13 @@ internal readonly record struct EndState(int Dashes, IReadOnlyCollection<string>
 /// dropdown. Unknown: the run cannot say, so the export leaves the cell alone.
 public enum SaveAndQuitNote { Unknown, Without, With }
 
+/// Whether a Return to Map happened inside a row's run, ending it included,
+/// for the sheet's dropdown. Unknown leaves the cell alone.
+public enum ReturnToMapNote { Unknown, Without, With }
+
 /// A closed segment whose requirements the run met, with its time.
-internal readonly record struct SegmentRecord(SegmentRule Rule, long Ticks, SaveAndQuitNote Note);
+internal readonly record struct SegmentRecord(SegmentRule Rule, long Ticks, SaveAndQuitNote Note,
+    ReturnToMapNote ReturnToMap = ReturnToMapNote.Unknown);
 
 /// How the level was left.
 internal enum LeaveKind {
@@ -71,6 +76,8 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         // a row that may return to the map reached its end short of something:
         // the next walk there drops it
         public bool Peeked;
+        // a Return to Map happened in its run
+        public bool ReturnedToMap;
         // one of its pieces reached the chapter's end. The segment's own: the
         // session of a level entered from the map knows nothing of it
         public bool Completed;
@@ -328,7 +335,8 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// that span leaves, unless they end on it with all they require. A piece
     /// from the map that fetched nothing its row lacked (a try, at a Return to
     /// Map or at the end of a row already completed) is not set aside: the
-    /// whole row goes, bank included. It then
+    /// whole row goes, bank included. A Return to Map also sets aside the
+    /// segments that span one. It then
     /// closes what ends there and drops the rest, unrecorded.
     public List<SegmentRecord> Left(LeaveKind kind, long reading, EndState end) {
         pending.Clear();
@@ -347,11 +355,13 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             OpenSegment segment = open[i];
             bool completedBefore = segment.Completed;
             segment.Completed |= kind == LeaveKind.ChapterEnd;
+            segment.ReturnedToMap |= kind == LeaveKind.ReturnToMap;
             if (kind == LeaveKind.SaveAndQuit
+                || (kind == LeaveKind.ReturnToMap && segment.Rule.SpansReturnToMap)
                 || (segment.Rule.SpansLeaves && !(segment.Completed && Met(segment, reading, end) != null))) {
                 open.RemoveAt(i);
                 bool atTheEndOfACompletedRow = kind == LeaveKind.ChapterEnd && completedBefore;
-                bool aTry = kind == LeaveKind.ReturnToMap || atTheEndOfACompletedRow;
+                bool aTry = segment.Rule.SpansLeaves && (kind == LeaveKind.ReturnToMap || atTheEndOfACompletedRow);
                 if (!aTry || segment.Lacked != Lacks(segment)) {
                     segment.Banked += reading - segment.Start;
                     aside.Add(segment);
@@ -376,7 +386,8 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// from the loader is one, and which leave it answers. What was set aside
     /// carries on from this reading, from the map only into a room it has
     /// walked into: a checkpoint picked further on would skip what lies
-    /// between. Nothing opened since the leave carries on.
+    /// between. One that spans a Return to Map carries on only from its own
+    /// checkpoint. Nothing opened since the leave carries on.
     /// Then the Current Room and map-spawn segments starting in this room
     /// open where atStart says the player is at their start, as on a
     /// Restart, and after a Save and Quit the Heart Respawn ones too. One
@@ -392,7 +403,10 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         bool carried = false;
         foreach (OpenSegment segment in aside) {
             if (kind != LeaveKind.SaveAndQuit) {
-                if (!segment.Entered.Contains(room)) {
+                bool carriesOn = segment.Rule.SpansReturnToMap
+                    ? Rooms.StartRoomOf(segment.Rule) == room
+                    : segment.Entered.Contains(room);
+                if (!carriesOn) {
                     continue;
                 }
 
@@ -415,12 +429,13 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
 
     /// A death zeroed chapter time (Level.Reload, in a level's first room
     /// with nothing collected): a new attempt from the spawn, as Restart,
-    /// for everything but a segment that spans leaves in a piece started
-    /// from the map. It keeps the time read before the reset, `last`, and
-    /// carries on from the new reading. True when one was kept.
+    /// for everything but a segment that spans leaves, or a Return to Map, in
+    /// a piece started from the map. It keeps the time read before the reset,
+    /// `last`, and carries on from the new reading. True when one was kept.
     public bool ClockZeroed(string scope, string room, long last, long reading, bool control, bool launching,
         Func<SegmentRule, bool> atStart) {
-        List<OpenSegment> kept = open.FindAll(segment => segment.Rule.SpansLeaves && segment.Lacked != null);
+        List<OpenSegment> kept = open.FindAll(segment =>
+            (segment.Rule.SpansLeaves || segment.Rule.SpansReturnToMap) && segment.Lacked != null);
         foreach (OpenSegment segment in kept) {
             segment.Banked += last - segment.Start;
             segment.Start = reading;
@@ -492,7 +507,8 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
 
             open.RemoveAt(i);
             if ((records == null || records(segment)) && !segment.Disqualified && Met(segment, reading, end) is { } ticks) {
-                result.Add(new SegmentRecord(segment.Rule, ticks, NoteOf(segment)));
+                result.Add(new SegmentRecord(segment.Rule, ticks, NoteOf(segment),
+                    segment.ReturnedToMap ? ReturnToMapNote.With : ReturnToMapNote.Without));
             }
         }
 

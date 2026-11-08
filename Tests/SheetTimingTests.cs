@@ -18,6 +18,17 @@ public class SheetTimingTests {
         Assert.Equal(expected, SheetTiming.Choice(Sq, note));
 
     [Theory]
+    [InlineData(ReturnToMapNote.With, "RTM")]
+    [InlineData(ReturnToMapNote.Without, "No RTM")]
+    [InlineData(ReturnToMapNote.Unknown, null)]
+    public void BothRtmOptionsFollowTheReturnToMapNote(ReturnToMapNote returnToMap, string expected) =>
+        Assert.Equal(expected, SheetTiming.Choice(["RTM", "No RTM"], SaveAndQuitNote.With, returnToMap));
+
+    [Fact]
+    public void AnSqDropdownIgnoresTheReturnToMapNote() =>
+        Assert.Equal("No S&Q", SheetTiming.Choice(Sq, SaveAndQuitNote.Without, ReturnToMapNote.With));
+
+    [Theory]
     [InlineData(SaveAndQuitNote.With)]
     [InlineData(SaveAndQuitNote.Without)]
     [InlineData(SaveAndQuitNote.Unknown)]

@@ -90,6 +90,10 @@ internal sealed record SegmentRule(
     /// room ends it only with all it requires, and a Return to Map ends it too.
     public bool MayReturnToMap { get; init; }
 
+    /// A checkpoint row whose route returns to the map inside it: a Return to
+    /// Map sets it aside, and its checkpoint's map spawn carries it on.
+    public bool SpansReturnToMap { get; init; }
+
     /// A map-spawn row that a walk-in from its entry room opens too.
     public bool AlsoWalkIn { get; init; }
 

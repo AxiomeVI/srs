@@ -52,7 +52,8 @@ public sealed class PendingUpdate {
     /// and overwrites it, which a Google locale writing 8,704 does on every
     /// row. 0:00.000 counts as empty, the sheet's own idiom for "no time yet".
     public static PendingUpdate Create(SheetRowRef row, string label, long localTicks, RemoteRow remote,
-        SaveAndQuitNote note, bool duplicate, long? rankOffsetTicks) {
+        SaveAndQuitNote note, bool duplicate, long? rankOffsetTicks,
+        ReturnToMapNote returnToMap = ReturnToMapNote.Unknown) {
         string localText = TimeFormat.FromTicks(localTicks);
         string band = remote?.Band ?? "";
         if (duplicate) {
@@ -83,7 +84,7 @@ public sealed class PendingUpdate {
             delta = TimeFormat.Delta(shown - remoteTicks.Value);
         }
 
-        string timing = SheetTiming.Choice(remote?.TimingOptions, note);
+        string timing = SheetTiming.Choice(remote?.TimingOptions, note, returnToMap);
         bool writable = !(fileTime && timing == null);
         if (!writable) {
             delta = "?";

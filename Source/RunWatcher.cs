@@ -831,7 +831,7 @@ public static class RunWatcher {
         // vouch for its note, so none claims one
         if (SplitImports.InteropVersion != null && !observing) {
             for (int i = 0; i < records.Count; i++) {
-                records[i] = records[i] with { Note = SaveAndQuitNote.Unknown };
+                records[i] = records[i] with { Note = SaveAndQuitNote.Unknown, ReturnToMap = ReturnToMapNote.Unknown };
             }
         }
 

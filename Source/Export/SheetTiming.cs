@@ -10,9 +10,18 @@ internal static class SheetTiming {
     public const string FileTime = "FileTime";
 
     /// The value srs sets the row's Timing cell to, or null to leave it alone.
-    public static string Choice(IReadOnlyList<string> options, SaveAndQuitNote note) {
+    public static string Choice(IReadOnlyList<string> options, SaveAndQuitNote note,
+        ReturnToMapNote returnToMap = ReturnToMapNote.Unknown) {
         if (options == null) {
             return null;
+        }
+
+        if (options.Contains("RTM", StringComparer.Ordinal) && options.Contains("No RTM", StringComparer.Ordinal)) {
+            return returnToMap switch {
+                ReturnToMapNote.With => "RTM",
+                ReturnToMapNote.Without => "No RTM",
+                _ => null,
+            };
         }
 
         bool with = options.Contains("S&Q", StringComparer.Ordinal);
