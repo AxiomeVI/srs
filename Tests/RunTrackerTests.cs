@@ -74,7 +74,8 @@ public class RunTrackerTests {
         t.RoomEntered("1a", "6", "5", 120, true, false, One);
         t.RoomEntered("1a", "5", "1", 140, true, false, One);
 
-        Assert.Equal(["Crossing"], t.Open.Select(r => r.Name));
+        // Crossing went too: backing out of it into 5 dropped it
+        Assert.Empty(t.Open);
     }
 
     [Fact]
@@ -274,9 +275,9 @@ public class RunTrackerTests {
         RunTracker t = Tracker();
 
         t.RoomEntered("1a", "07-a", "08-a", 0, true, false, One);
-        // a route that steps back into the entry room and in again
-        t.RoomEntered("1a", "08-a", "07-a", 30, true, false, One);
-        t.RoomEntered("1a", "07-a", "08-a", 50, true, false, One);
+        // 3A's berry route loops back into 08-a from a room of its own segment
+        t.RoomEntered("1a", "08-a", "09-b", 30, true, false, One);
+        t.RoomEntered("1a", "09-b", "08-a", 50, true, false, One);
 
         Assert.Equal([("Huge Mess", 100L)], Of(t.RoomEntered("1a", "09-b", "09-d", 100, true, false, One)));
     }
@@ -409,12 +410,15 @@ public class RunTrackerTests {
         Add("Loop", "2", "2", setup: StartSetup.CurrentRoom, entry: "x");
         RunTracker t = Tracker();
 
+        // round by y: stepping from 2 straight into x would be backing out
         t.Restart("1a", "2", 0, true, false, _ => true);
-        t.RoomEntered("1a", "2", "x", 30, true, false, One);
+        t.RoomEntered("1a", "2", "y", 20, true, false, One);
+        t.RoomEntered("1a", "y", "x", 30, true, false, One);
 
         Assert.Equal([("Loop", 100L)], Of(t.RoomEntered("1a", "x", "2", 100, true, false, One)));
         Assert.Equal(["Loop"], t.Open.Select(r => r.Name));
-        t.RoomEntered("1a", "2", "x", 120, true, false, One);
+        t.RoomEntered("1a", "2", "y", 110, true, false, One);
+        t.RoomEntered("1a", "y", "x", 120, true, false, One);
         Assert.Equal([("Loop", 50L)], Of(t.RoomEntered("1a", "x", "2", 150, true, false, One)));
     }
 
@@ -1448,6 +1452,128 @@ public class RunTrackerTests {
         t.Restart("1a", "b-00", 0, true, false, _ => true);
 
         Assert.Equal(["ARB Depths"], t.Open.Select(r => r.Name));
+    }
+
+    // walking back out of a checkpoint's first room, into the room it is
+    // entered from, drops its rows; walking in again opens nothing
+    [Fact]
+    public void BackingOutOfACheckpointDropsItUntilANewAttempt() {
+        Add("Crossing", "6", "9b", entry: "5");
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        Assert.Equal(["Crossing"], t.Open.Select(r => r.Name));
+        t.RoomEntered("1a", "6", "5", 150, true, false, One);
+        Assert.Empty(t.Open);
+        t.RoomEntered("1a", "5", "6", 200, true, false, One);
+        Assert.Empty(t.Open);
+        Assert.Empty(t.RoomEntered("1a", "8", "9b", 400, true, false, One));
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        Assert.Equal(["Crossing"], t.Open.Select(r => r.Name));
+    }
+
+    // backing out without having walked in first counts too: the row is not
+    // open, and still does not open on the next walk-in
+    [Fact]
+    public void BackingOutOfACheckpointNotOpenStillBarsIt() {
+        Add("Crossing", "6", "9b", entry: "5");
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "6", 0, true, false, _ => false);
+        t.RoomEntered("1a", "6", "5", 50, true, false, One);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+
+        Assert.Empty(t.Open);
+    }
+
+    // walking on, into another room of the checkpoint, is no backing out
+    [Fact]
+    public void WalkingOnInACheckpointKeepsItOpen() {
+        Add("Crossing", "6", "9b", entry: "5");
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        t.RoomEntered("1a", "6", "7", 150, true, false, One);
+        t.RoomEntered("1a", "7", "6", 160, true, false, One);
+
+        Assert.Equal(["Crossing"], t.Open.Select(r => r.Name));
+    }
+
+    // a Return to Map ends the attempt: the next walk-in opens the row again
+    [Fact]
+    public void AReturnToMapLiftsTheBar() {
+        Add("Crossing", "6", "9b", entry: "5");
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        t.RoomEntered("1a", "6", "5", 150, true, false, One);
+        t.Left(LeaveKind.ReturnToMap, 200, One);
+        t.Reentered(LeaveKind.ReturnToMap, "1a", "5", 0, true, false, _ => false);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+
+        Assert.Equal(["Crossing"], t.Open.Select(r => r.Name));
+    }
+
+    // a Save and Quit does not: the attempt goes on
+    [Fact]
+    public void ASaveAndQuitKeepsTheBar() {
+        Add("Crossing", "6", "9b", entry: "5");
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "1", 0, true, false, _ => true);
+        t.RoomEntered("1a", "5", "6", 100, true, false, One);
+        t.RoomEntered("1a", "6", "5", 150, true, false, One);
+        t.Left(LeaveKind.SaveAndQuit, 200, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "5", 200, true, false, _ => false);
+        t.RoomEntered("1a", "5", "6", 300, true, false, One);
+
+        Assert.Empty(t.Open);
+    }
+
+    // a row barred by backing out, which a Save and Quit reopens from its
+    // spawn, is not dropped by the next room change
+    [Fact]
+    public void ARowASaveAndQuitReopensSurvivesTheNextRoom() {
+        Add("ARB Depths", "b-00", "c-00", setup: StartSetup.MapSpawn, berries: true, entry: "a-13", alsoWalkIn: true);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "a-00", 0, true, false, _ => false);
+        t.RoomEntered("1a", "a-13", "b-00", 100, true, false, One);
+        t.RoomEntered("1a", "b-00", "a-13", 120, true, false, One);
+        t.RoomEntered("1a", "a-13", "b-00", 140, true, false, One);
+        Assert.Empty(t.Open);
+        t.Left(LeaveKind.SaveAndQuit, 150, One);
+        t.Reentered(LeaveKind.SaveAndQuit, "1a", "b-00", 150, true, false, _ => true);
+        Assert.Equal(["ARB Depths"], t.Open.Select(r => r.Name));
+
+        t.RoomEntered("1a", "b-00", "b-18", 200, true, false, One);
+
+        Assert.Equal(["ARB Depths"], t.Open.Select(r => r.Name));
+    }
+
+    // 5A's berry Start, peeking into Depths short of a berry: the walk-on
+    // route is spoilt, and a second walk into Depths drops the row
+    [Fact]
+    public void ARowThatMayReturnToTheMapIsDroppedOnASecondWalkToItsEnd() {
+        Add("ARB Start", "a-00", "b-00", setup: StartSetup.CurrentRoom, berries: true, mayReturnToMap: true);
+        Add("Depths", "b-00", null, entry: "a-13");
+        rooms.Berries["ARB Start"] = ["b1", "b2"];
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "a-00", 0, true, false, _ => true);
+        t.BerryCollected("b1");
+        t.RoomEntered("1a", "a-13", "b-00", 100, true, false, One);
+        t.RoomEntered("1a", "b-00", "a-13", 120, true, false, One);
+        t.BerryCollected("b2");
+
+        Assert.Empty(t.RoomEntered("1a", "a-13", "b-00", 200, true, false, One));
+        Assert.Empty(t.Open);
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 300, One));
     }
 
     // a chapter's end is no end of it: dropped, like a row that ends on

@@ -68,6 +68,9 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         public int Gems;
         public readonly HashSet<string> Berries = [];
         public bool Disqualified;
+        // a row that may return to the map reached its end short of something:
+        // the next walk there drops it
+        public bool Peeked;
         // one of its pieces reached the chapter's end. The segment's own: the
         // session of a level entered from the map knows nothing of it
         public bool Completed;
@@ -90,6 +93,9 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     // is tested where the player appears
     private readonly List<(SegmentRule Rule, bool FromLoad, Opening Opening)> pending = [];
     private string pendingRoom;
+    // backed out of their first room into the room it is entered from: no
+    // walk-in opens them again until a new attempt
+    private readonly HashSet<SegmentRule> backedOut = [];
 
     /// Swapped by RunWatcher when the area changes.
     public IRoomMap Rooms { get; set; } = rooms;
@@ -104,6 +110,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         aside.Clear();
         pending.Clear();
         pendingRoom = null;
+        backedOut.Clear();
     }
 
     /// Nothing open can be recorded any more, but it stays open, so that the
@@ -177,6 +184,8 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// shortcut, or another route's door, and drops it unrecorded. A Restart
     /// row ending here is dropped on any way in: a restart after it is not a
     /// run of the row.
+    /// Walking from a row's start room back into its entry room drops it
+    /// (backedOut).
     public List<SegmentRecord> RoomEntered(string scope, string from, string room, long reading, bool control,
         bool launching, EndState end) {
         bool entry = IsEntry(scope, from, room);
@@ -188,19 +197,33 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             }
         }
 
+        if (from != null) {
+            foreach (SegmentRule rule in rules) {
+                if (rule.Scope == scope && Rooms.StartRoomOf(rule) == from && Rooms.EntryRoomOf(rule) == room) {
+                    backedOut.Add(rule);
+                    open.RemoveAll(segment => segment.Rule == rule);
+                }
+            }
+        }
+
         Predicate<OpenSegment> fromItsEntry = segment => from != null && SuccessorEntryOf(segment.Rule, scope, room) == from;
+        Predicate<OpenSegment> atItsEnd = segment => segment.Rule.End == EndKind.NextStart && Rooms.EndRoomOf(segment.Rule) == room;
         List<SegmentRecord> records = CloseWhere(
-            segment => segment.Rule.End == EndKind.NextStart && Rooms.EndRoomOf(segment.Rule) == room
-                       // one that may still return to the map goes on, unless it is met here
-                       && (!segment.Rule.MayReturnToMap || (fromItsEntry(segment) && Met(segment, reading, end) != null)),
-            reading, end, records: fromItsEntry);
+            // one that may still return to the map goes on the first time, unless it is met here
+            segment => atItsEnd(segment) && (!segment.Rule.MayReturnToMap || segment.Peeked
+                                             || (fromItsEntry(segment) && Met(segment, reading, end) != null)),
+            reading, end, records: segment => !segment.Peeked && fromItsEntry(segment));
+        foreach (OpenSegment segment in open) {
+            segment.Peeked |= atItsEnd(segment);
+        }
+
         CloseWhere(segment => segment.Rule.End == EndKind.Restart && Rooms.EndRoomOf(segment.Rule) == room,
             reading, end, records: _ => false);
         pending.Clear();
         pendingRoom = null;
         if (entry) {
             OpenAt(scope, room, reading, control, launching, standalone: false,
-                rule => rule.OpensOnWalkIn && Rooms.EntryRoomOf(rule) == from,
+                rule => rule.OpensOnWalkIn && Rooms.EntryRoomOf(rule) == from && !backedOut.Contains(rule),
                 fromLoad: false, Opening.WalkIn);
         }
 
@@ -310,6 +333,11 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     public List<SegmentRecord> Left(LeaveKind kind, long reading, EndState end) {
         pending.Clear();
         pendingRoom = null;
+        // the attempt ends, unless a Save and Quit resumes it
+        if (kind != LeaveKind.SaveAndQuit) {
+            backedOut.Clear();
+        }
+
         if (kind == LeaveKind.ReturnToMap) {
             // the game loses a berry still following with the level
             end = end with { FollowingBerries = [] };
