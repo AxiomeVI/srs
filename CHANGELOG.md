@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v4.3.0 — 2026-11-09
 
 - **Making a savestate starts a new attempt, as loading one does.** The segments you were in are dropped, not recorded, and the rows above the timer clear. Making it counts as loading it at once: a segment that starts from a savestate, such as a chapter's first segment saved where you appeared before you moved, starts from the one you just made, with the same time as a load of it. 8A's Start rows never do, so saving after loading Core drops them.
 
