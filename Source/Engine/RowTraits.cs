@@ -73,7 +73,9 @@ internal readonly record struct RowTraits(
         [("1a", "FC Crossing to RTM")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Requires: Heart | Cassette, Berries: CrossingToRtmBerries),
         [("1a", "FC Chasm-2")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Requires: Cassette, Berries: ChasmTwoBerries),
         [("1a", "FC IL")] = new(Requires: Heart | Cassette, SpansLeaves: true),
-        // the heart of 2A's Start is a row of its own, ended by Restart Chapter
+        // the heart of 2A's Start is a row of its own, which ends on the heart
+        // collect though its label ends in RC (owner)
+        [("2a", "Start Heart RC")] = new(EndsOnHeart: true),
         [("2a", "FC Start")] = new(Requires: Cassette),
         [("2a", "FC IL")] = new(Requires: Cassette),
         [("3a", "FC Elevator Shaft")] = new(Requires: Cassette),

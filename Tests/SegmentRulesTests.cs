@@ -515,6 +515,13 @@ public class SegmentRulesTests {
         Assert.Equal(EndKind.NextStart, Rule("5a", "ARB Start").End);
     }
 
+    // its label ends in RC, but the row ends on the heart (owner)
+    [Fact]
+    public void TwoAStartsHeartRowEndsOnTheHeart() {
+        SegmentRule rule = Rule("2a", "Start Heart RC");
+        Assert.Equal((EndKind.Collect, Collectibles.Heart, Collectibles.Heart), (rule.End, rule.EndsOn, rule.Requires));
+    }
+
     // the map-spawn rows a walk-in from the checkpoint before opens too
     [Fact]
     public void TheMapSpawnRowsThatAlsoWalkIn() {
