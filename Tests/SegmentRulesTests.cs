@@ -523,7 +523,8 @@ public class SegmentRulesTests {
     [Fact]
     public void TheRowsThatSpanAReturnToMap() {
         List<SegmentRule> spanning = SegmentRules.All.Where(r => r.SpansReturnToMap).ToList();
-        Assert.Equal(["7a/FC 2000m", "7a/FC 2500m"], spanning.Select(r => $"{r.Scope}/{r.Name}"));
+        Assert.Equal(["1a/Chasm Tape Clear", "7a/2000m Gem", "7a/FC 2000m", "7a/FC 2500m"],
+            spanning.Select(r => $"{r.Scope}/{r.Name}"));
         Assert.All(spanning, r => Assert.Equal(EndKind.NextStart, r.End));
     }
 

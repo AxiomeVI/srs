@@ -32,6 +32,10 @@ internal readonly record struct RowTraits(
     // rooms as the game names them. A key no row carries never applies
     // (SheetConsistencyTests checks each one)
     internal static readonly Dictionary<(string Scope, string Name), RowTraits> All = new() {
+        // a route may return to the map after the collect and go on from the
+        // checkpoint's spawn (owner)
+        [("1a", "Chasm Tape Clear")] = new(SpansReturnToMap: true),
+        [("7a", "2000m Gem")] = new(SpansReturnToMap: true),
         // 7zb is Crossing's far berry, taken from Start on that route
         [("1a", "ARB Start to RTM")] = new(EndsOnReturnToMap: true, Berries: new BerrySet("Start", Rooms: ["7zb"])),
         // 1A's Crossing and Chasm rows of both berry tabs open on their map

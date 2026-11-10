@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **1A's `Chasm Tape Clear` and 7A's `2000m Gem` carry on across a Return to Map**, as 7A's `FC 2000m` and `FC 2500m` do. Take the cassette or the gem, return to the map, pick the same checkpoint again, and the row goes on to its end, its time the chapter time of both pieces. The route that runs straight through still records.
+- **The export sets the `RTM` / `No RTM` dropdown** of A Sides' `Chasm 📼 Clear` and `2000m 💎` from the run, as it does for the full clear rows.
+
 ## v4.3.0 — 2026-11-09
 
 - **Making a savestate starts a new attempt, as loading one does.** The segments you were in are dropped, not recorded, and the rows above the timer clear. Making it counts as loading it at once: a segment that starts from a savestate, such as a chapter's first segment saved where you appeared before you moved, starts from the one you just made, with the same time as a load of it. 8A's Start rows never do, so saving after loading Core drops them.

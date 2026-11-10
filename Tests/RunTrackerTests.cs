@@ -76,6 +76,26 @@ public class RunTrackerTests {
         }
     }
 
+    // 1A's Chasm Tape Clear: the cassette, a Return to Map, then on from
+    // Chasm's spawn to the chapter end. The plain row does not survive it
+    [Fact]
+    public void ARowThatSpansAReturnToMapGoesOnToTheChapterEnd() {
+        Add("Chasm", "9b", null, entry: "9");
+        Add("Chasm Tape Clear", "9b", null, requires: Collectibles.Cassette, entry: "9", spansReturnToMap: true);
+        RunTracker t = Tracker();
+
+        t.Restart("1a", "9", 0, true, false, _ => false);
+        t.RoomEntered("1a", "9", "9b", 100, true, false, One);
+        t.Collected(Collectibles.Cassette, 300, One);
+        Assert.Empty(t.Left(LeaveKind.ReturnToMap, 400, One));
+        Assert.True(t.Reentered(LeaveKind.ReturnToMap, "1a", "9b", 50, true, false, _ => false));
+        List<SegmentRecord> records = t.ChapterTimeStopped(250, One);
+
+        // both pieces: 400 - 100, then 250 - 50
+        Assert.Equal([("Chasm Tape Clear", 500L)], Of(records));
+        Assert.Equal(ReturnToMapNote.With, records[0].ReturnToMap);
+    }
+
     // the session from the map is new: a death in the checkpoint's first room
     // zeroes chapter time, and the row keeps what it had
     [Fact]
