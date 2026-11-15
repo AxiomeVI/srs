@@ -1,3 +1,4 @@
+#nullable disable
 using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
@@ -144,7 +145,11 @@ internal sealed class KeybindScreen<TSettings> : TextMenu where TSettings : clas
         AddSection(VanillaControllerTitle, keyboard: false, binding => binding.Buttons,
                    (label, buttons) => new Row(label, buttons));
         FitBindings();
-        if (index >= 0) Selection = index;
+        if (index >= 0) {
+            Selection = index;
+            // The selected row's line was open before the rebuild; starting it shut made it slide open again.
+            if (index + 1 < Items.Count && Items[index + 1] is RowDescription description) description.OpenAtOnce();
+        }
     }
 
     private void AddSection<T>(string titleId, bool keyboard, Func<ButtonBinding, List<T>> inputs,
@@ -283,17 +288,19 @@ internal sealed class KeybindScreen<TSettings> : TextMenu where TSettings : clas
             //
             // A pad recording also stops when the pad loses focus: an unplugged pad reads every button
             // up, which would be saved as the chord being let go.
-            if (Input.ESC.Pressed || timeout <= 0f || (!recordingKeyboard && !Input.GuiInputController())) {
+            ButtonBinding current = recordingKeybind.Binding(Settings);
+            // The binding can vanish mid-recording (the settings object is replaced): stop, save nothing.
+            if (Input.ESC.Pressed || timeout <= 0f || current is null
+                || (!recordingKeyboard && !Input.GuiInputController())) {
                 Input.ESC.ConsumePress();
                 recording = false;
                 Focused = true;
             } else if (recordingKeyboard) {
                 Keys[] held = MInput.Keyboard.CurrentState.GetPressedKeys();
                 if (Bindable.RefusedKeyWentDown(held, MInput.Keyboard.Pressed)) Audio.Play(InvalidSound);
-                Step(keyChord, Bindable.BindableKeys(held), recordingKeybind.Binding(Settings).Keys);
+                Step(keyChord, Bindable.BindableKeys(held), current.Keys);
             } else {
-                Step(buttonChord, Bindable.HeldButtons(MInput.GamePads[Input.Gamepad].CurrentState),
-                     recordingKeybind.Binding(Settings).Buttons);
+                Step(buttonChord, Bindable.HeldButtons(MInput.GamePads[Input.Gamepad].CurrentState), current.Buttons);
             }
             timeout -= Engine.RawDeltaTime;
         }
@@ -391,6 +398,8 @@ internal sealed class KeybindScreen<TSettings> : TextMenu where TSettings : clas
             this.row = row;
             IncludeWidthInMeasurement = false;
         }
+
+        internal void OpenAtOnce() => ease = 1f;
 
         public override void Update() {
             ease = Calc.Approach(ease, Container.Current == row ? 1f : 0f, Engine.RawDeltaTime * 4f);
