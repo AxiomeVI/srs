@@ -189,8 +189,6 @@ public static class RunWatcher {
     private static bool TasPlaying() => !testCountsTasRuns && TasImports.IsTasActive?.Invoke() == true;
 
     public static void Load() {
-        // hook order: see SrsModule.Load
-        On.Celeste.Level.Update += LevelOnUpdate;
         On.Celeste.Level.LoadLevel += LevelOnLoadLevel;
         On.Celeste.Level.Reload += LevelOnReload;
         On.Celeste.Session.Restart += SessionOnRestart;
@@ -252,7 +250,6 @@ public static class RunWatcher {
     }
 
     public static void Unload() {
-        On.Celeste.Level.Update -= LevelOnUpdate;
         On.Celeste.Level.LoadLevel -= LevelOnLoadLevel;
         On.Celeste.Level.Reload -= LevelOnReload;
         On.Celeste.Session.Restart -= SessionOnRestart;
@@ -349,7 +346,9 @@ public static class RunWatcher {
             || a.LowFriction || a.SuperDashing || a.Hiccups;
     }
 
-    private static void LevelOnUpdate(On.Celeste.Level.orig_Update orig, Level self) {
+    /// SrsModule's Level.Update hook, first in the frame. Hotkeys.Poll follows
+    /// each call to orig at once: the rows read its Pressed after this returns.
+    internal static void Update(On.Celeste.Level.orig_Update orig, Level self) {
         // switched off, without Speed Run Tool's SaveLoad, or under an assist
         // or a variant: nothing is fed. Moved is set on every frame off, so a
         // savestate made or loaded meanwhile opens nothing
@@ -360,6 +359,7 @@ public static class RunWatcher {
             restoredWipe = null;
             stateSaved = false;
             orig(self);
+            Hotkeys.Poll(self);
             roomLoad = RoomLoad.None;
             chapterRestarted = false;
             leave = null;
@@ -405,6 +405,7 @@ public static class RunWatcher {
         frameStart = before;
         inUpdate = true;
         orig(self);
+        Hotkeys.Poll(self);
         inUpdate = false;
 
         // a row a TAS played one frame of is never recorded, whoever ends it:

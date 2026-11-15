@@ -52,19 +52,14 @@ public static class TierComparison {
     private static string place = "";
 
     public static void Load() {
-        // hook order: see SrsModule.Load
-        On.Celeste.Level.Update += LevelOnUpdate;
         On.Celeste.SpeedrunTimerDisplay.Render += SpeedrunTimerDisplayOnRender;
     }
 
     public static void Unload() {
-        On.Celeste.Level.Update -= LevelOnUpdate;
         On.Celeste.SpeedrunTimerDisplay.Render -= SpeedrunTimerDisplayOnRender;
     }
 
-    private static void LevelOnUpdate(On.Celeste.Level.orig_Update orig, Level self) {
-        orig(self);
-
+    internal static void Update(Level self) {
         if (!Settings.Enabled) {
             return;
         }
