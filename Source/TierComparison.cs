@@ -15,8 +15,8 @@ namespace Celeste.Mod.SpeedrunSheet;
 public static class TierComparison {
     private static SrsSettings Settings => SrsModule.Settings;
 
-    // recomputed every frame from RunWatcher.Attempt, so a sheet re-import shows
-    // at once; session display, not registered with save states
+    // set every frame from RunWatcher.Attempt and rebuilt when what it reads
+    // differs (see builtFrom), so a sheet re-import shows at once; session display, not registered with save states
     private static TierRows? rows;
     private static string segmentName = "";
     private static Color tierColor = Color.White;
@@ -50,6 +50,18 @@ public static class TierComparison {
     private static int stepsBack;
     private static int steppedSerial = -1;
     private static string place = "";
+
+    // what the rows were built from: the next frame rebuilds them only when
+    // one of these differs, so a re-import or a sheet answer still shows at once
+    private static TierRows? built;
+    private static (int Serial, SheetBlock Block, SheetSegment Segment, long? SheetTicks, long? RankOffsetTicks,
+        int Count, int StepsBack) builtFrom;
+
+    // the drawn rows, built from `rows` and the display settings
+    private readonly record struct Row(List<(string Text, Color Color)> Parts, string Whole);
+    private static Row? topRow, bottomRow;
+    private static bool laidOut;
+    private static (bool, bool, bool, bool, bool) laidOutFor;
 
     public static void Load() {
         On.Celeste.SpeedrunTimerDisplay.Render += SpeedrunTimerDisplayOnRender;
@@ -132,11 +144,18 @@ public static class TierComparison {
         }
 
         (_, long? sheetTicks, long? rankOffsetTicks) = sheetTimes[shownSerial];
-        TierRows built = TierLine.Build(block.Columns, segment.Times, record.Ticks, sheetTicks, rankOffsetTicks);
-        rows = built;
-        segmentName = TierLine.NameOf(record.Rule.Scope, record.Rule.Name);
-        place = attempt.Count > 1 ? $"{attempt.Count - stepsBack}/{attempt.Count}" : "";
-        tierColor = built.Tier == SheetData.Unranked ? Color.Gray : TierColors.GetValueOrDefault(built.Tier, Color.White);
+        var inputs = (shownSerial, block, segment, sheetTicks, rankOffsetTicks, attempt.Count, stepsBack);
+        if (built is not { } shown || inputs != builtFrom) {
+            shown = TierLine.Build(block.Columns, segment.Times, record.Ticks, sheetTicks, rankOffsetTicks);
+            built = shown;
+            builtFrom = inputs;
+            segmentName = TierLine.NameOf(record.Rule.Scope, record.Rule.Name);
+            place = attempt.Count > 1 ? $"{attempt.Count - stepsBack}/{attempt.Count}" : "";
+            tierColor = shown.Tier == SheetData.Unranked ? Color.Gray : TierColors.GetValueOrDefault(shown.Tier, Color.White);
+            laidOut = false;
+        }
+
+        rows = shown;
     }
 
     // the time the player's own sheet holds for the row, in the basis srs
@@ -196,6 +215,26 @@ public static class TierComparison {
             return;
         }
 
+        (bool, bool, bool, bool, bool) flags = (Settings.ShowTime, Settings.ShowTier, Settings.ShowPbImprovement,
+            Settings.ShowDelta, Settings.ShowCheckpointName);
+        if (!laidOut || flags != laidOutFor) {
+            LayOut(shown);
+            laidOutFor = flags;
+            laidOut = true;
+        }
+
+        drawn = true;
+        int slot = 0;
+        if (topRow is { } top) {
+            DrawRow(self, slot++, top);
+        }
+
+        if (bottomRow is { } bottom) {
+            DrawRow(self, slot, bottom);
+        }
+    }
+
+    private static void LayOut(TierRows shown) {
         // the time keeps the tier's color without the tier
         List<(string Text, Color Color)> parts = [];
         string ranked = $"{(Settings.ShowTime ? shown.Time : "")} {(Settings.ShowTier ? shown.Tier : "")}".Trim();
@@ -211,18 +250,14 @@ public static class TierComparison {
             parts.Add((shown.Gap, BehindColor));
         }
 
-        drawn = true;
-        int slot = 0;
-        if (parts.Count > 0) {
-            DrawRow(self, slot++, parts);
-        }
-
-        if (Settings.ShowCheckpointName) {
-            DrawRow(self, slot, place.Length > 0
-                ? [(place, Color.Gray), (segmentName, Color.White)]
-                : [(segmentName, Color.White)]);
-        }
+        topRow = parts.Count > 0 ? MakeRow(parts) : null;
+        bottomRow = Settings.ShowCheckpointName
+            ? MakeRow(place.Length > 0 ? [(place, Color.Gray), (segmentName, Color.White)] : [(segmentName, Color.White)])
+            : null;
     }
+
+    private static Row MakeRow(List<(string Text, Color Color)> parts) =>
+        new(parts, string.Join(PartSeparator, parts.ConvertAll(part => part.Text)));
 
     private const string PartSeparator = "  ";
 
@@ -247,7 +282,7 @@ public static class TierComparison {
     // slot 0 sits right above the timer, slot 1 above it; same background and
     // sliding animation as Speed Run Tool's PB row, scaled down. One band for
     // the whole row, sized on what is written
-    private static void DrawRow(SpeedrunTimerDisplay self, int slot, List<(string Text, Color Color)> parts) {
+    private static void DrawRow(SpeedrunTimerDisplay self, int slot, Row row) {
         const float timeMarginLeft = 32f;
         float ratio = Scale / 0.6f;
 
@@ -263,13 +298,12 @@ public static class TierComparison {
         float x = -300f * Ease.CubeIn(1f - self.DrawLerp);
         float y = self.Y - DigitRise - rowHeight - slot * (rowHeight + RowGap);
 
-        string whole = string.Join(PartSeparator, parts.ConvertAll(part => part.Text));
-        float width = Math.Max(0f, timeMarginLeft + Width(whole) - FadeLead);
+        float width = Math.Max(0f, timeMarginLeft + Width(row.Whole) - FadeLead);
         Draw.Rect(x, y, width + 2f, rowHeight, Color.Black);
         bg.Draw(new Vector2(x + width, y), Vector2.Zero, Color.White, Scale);
 
         Vector2 at = new(x + timeMarginLeft, y + 28.4f * ratio + TextDrop);
-        foreach ((string part, Color color) in parts) {
+        foreach ((string part, Color color) in row.Parts) {
             font.DrawOutline(baseSize, part, at, new Vector2(0f, 1f), Vector2.One * Scale, color, 2f, Color.Black);
             at.X += Width(part + PartSeparator);
         }
