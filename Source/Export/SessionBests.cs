@@ -15,7 +15,7 @@ internal static class SessionBests {
     // is a fact about the session, and a load must not take it back
     /// Whether any run improved.
     public static bool Record(IReadOnlyList<SegmentRecord> records, Session session) {
-        string scope = session == null ? null : SegmentAutoDetect.ScopeOf(session);
+        string scope = SegmentAutoDetect.ScopeOf(session);
         List<SegmentRecord> here = [];
         foreach (SegmentRecord record in records) {
             if (record.Rule.Scope == scope) {

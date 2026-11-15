@@ -174,7 +174,7 @@ internal static class AutoExport {
             outcome => {
                 if (outcome.NotWritten > 0) {
                     Interlocked.Add(ref failed, outcome.NotWritten);
-                } else if (outcome.Written > 0 && outcome.Results.All(r => r.Status != "changed")) {
+                } else if (outcome.Written > 0 && outcome.Results.All(r => r.Status != ExportStatus.Changed)) {
                     Interlocked.Add(ref written, outcome.Written);
                 }
             });

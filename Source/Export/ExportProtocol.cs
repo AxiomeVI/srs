@@ -33,6 +33,18 @@ public sealed class ExportRequest {
     [JsonPropertyName("updates")] public List<ExportUpdate> Updates { get; set; } = [];
 }
 
+/// What the script answers, per row (Status) and for the Timing cell (Timing)
+public static class ExportStatus {
+    public const string Written = "written";
+    public const string Unchanged = "unchanged";
+    public const string Changed = "changed";
+    public const string Refused = "refused";
+    public const string NotFound = "notFound";
+    public const string Ambiguous = "ambiguous";
+    public const string TimingSet = "set";
+    public const string TimingKept = "kept";
+}
+
 public sealed class ExportResult {
     [JsonPropertyName("tab")] public string Tab { get; set; } = "";
     [JsonPropertyName("band")] public string Band { get; set; } = "";
