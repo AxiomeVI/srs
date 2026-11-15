@@ -1431,22 +1431,51 @@ public class RunTrackerTests {
         Assert.Equal([("IL", 500L)], Of(t.ChapterTimeStopped(500, One)));
     }
 
-    [Fact]
-    public void ASaveAndQuitReentrySaysWhetherTheRunCarriesOn() {
+    // a Save and Quit and Continue always carries the run on, so the rows
+    // above the timer stay: nothing set aside, a run finished before the
+    // leave, something able to record, everything disqualified (6A's watched
+    // fall), a start waiting for control
+    [Theory]
+    [InlineData("nothing set aside")]
+    [InlineData("finished")]
+    [InlineData("can record")]
+    [InlineData("disqualified")]
+    [InlineData("waiting")]
+    public void ASaveAndQuitReentryAlwaysCarriesTheRunOn(string how) {
         Add("Start", "1", "6", setup: StartSetup.CurrentRoom);
+        Add("Crossing", "6", "9b", entry: "5");
         RunTracker t = Tracker();
 
-        // nothing was set aside
-        Assert.False(t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 0, true, false, _ => false));
+        if (how != "nothing set aside") {
+            t.Restart("1a", "1", 0, how != "waiting", false, _ => true);
+        }
 
-        t.Restart("1a", "1", 0, true, false, _ => true);
+        if (how == "finished") {
+            // Start closes, then backing out of Crossing drops it
+            Assert.Equal([("Start", 80L)], Of(t.RoomEntered("1a", "5", "6", 80, true, false, One)));
+            t.RoomEntered("1a", "6", "5", 90, true, false, One);
+            Assert.Empty(t.Open);
+        } else if (how == "disqualified") {
+            t.Disqualify();
+        }
+
         t.Left(LeaveKind.SaveAndQuit, 100, One);
         Assert.True(t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 100, true, false, _ => false));
+    }
 
-        // what can no longer record carries no run
-        t.Disqualify();
-        t.Left(LeaveKind.SaveAndQuit, 200, One);
-        Assert.False(t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 200, true, false, _ => false));
+    // from the map, a start waiting for control at the leave carries nothing on
+    [Fact]
+    public void AReturnToMapReentryWithOnlyAWaitingStartDoesNotCarryTheRunOn() {
+        Add("Chamber", "a-02", "c-00", setup: StartSetup.CurrentRoom, scope: "5b");
+        Add("Mirror", "c-00", null, setup: StartSetup.CurrentRoom, afterWakeUp: true, entry: "b-09",
+            scope: "5b");
+        RunTracker t = Tracker();
+
+        t.Restart("5b", "a-02", 0, true, false, _ => true);
+        t.RoomEntered("5b", "b-09", "c-00", 100, false, false, One);
+        t.Left(LeaveKind.ReturnToMap, 130, One);
+
+        Assert.False(t.Reentered(LeaveKind.ReturnToMap, "5b", "c-00", 150, true, false, _ => false));
     }
 
     // 5B's Through the Mirror: Central Chamber closes on the walk into c-00,
@@ -1481,33 +1510,6 @@ public class RunTrackerTests {
 
         Assert.Equal([("Mirror", 210L)], Of(records));
         Assert.Equal(SaveAndQuitNote.With, records[0].Note);
-    }
-
-    // the start waiting at a Save and Quit carries that re-entry only: not the
-    // next leave's, not one after a new attempt, and never a Return to Map's
-    [Theory]
-    [InlineData("next leave")]
-    [InlineData("new attempt")]
-    [InlineData("return to map")]
-    public void AStartWaitingAtTheLeaveCarriesOnlyThatSaveAndQuit(string how) {
-        Add("Chamber", "a-02", "c-00", setup: StartSetup.CurrentRoom, scope: "5b");
-        Add("Mirror", "c-00", null, setup: StartSetup.CurrentRoom, afterWakeUp: true, entry: "b-09",
-            scope: "5b");
-        RunTracker t = Tracker();
-
-        t.Restart("5b", "a-02", 0, true, false, _ => true);
-        t.RoomEntered("5b", "b-09", "c-00", 100, false, false, One);
-        LeaveKind kind = how == "return to map" ? LeaveKind.ReturnToMap : LeaveKind.SaveAndQuit;
-        t.Left(kind, 130, One);
-        if (how == "next leave") {
-            // a re-entry off the wake-up spawn opens nothing
-            Assert.True(t.Reentered(kind, "5b", "c-00", 130, true, false, _ => false));
-            t.Left(kind, 150, One);
-        } else if (how == "new attempt") {
-            t.Drop();
-        }
-
-        Assert.False(t.Reentered(kind, "5b", "c-00", 150, true, false, _ => false));
     }
 
     [Theory]
