@@ -106,6 +106,16 @@ public class SheetTimingTests {
         Assert.DoesNotContain("expectBuffer", json);
     }
 
+    // the sheet shows "1:36.9" where srs would format "1:36.900": the script compares the
+    // cell as it holds it, so Expect is the cell as read
+    [Fact]
+    public void ExpectIsTheCellAsReadNotAReformat() {
+        PendingUpdate u = Pending("Crossing", 90, "1:36.9", null, null, SaveAndQuitNote.With);
+
+        ExportUpdate update = Assert.Single(SheetTiming.Updates([u]));
+        Assert.Equal("1:36.9", update.Expect);
+    }
+
     [Fact]
     public void AGroupWhoseRowsAgreeKeepsBothValues() {
         List<ExportUpdate> sent = SheetTiming.Updates([

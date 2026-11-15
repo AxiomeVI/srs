@@ -17,6 +17,17 @@ public class ExportBatchesTests {
         return JsonSerializer.Serialize(new { results, ms, version = 3 });
     }
 
+    // the rates are measurements (see ExportBatches): about 3 s a row for a row that sets a
+    // synced selector, up to 30 s waiting on the script's lock. A full request at that rate
+    // ends inside the timeout with half as much again to spare
+    [Fact]
+    public void AFullRequestAtTheSlowestMeasuredRateEndsWellInsideTheTimeout() {
+        double slowest = ExportBatches.Size * 3.0 + 30.0;
+
+        Assert.True(slowest * 1.5 <= ExportBatches.WriteTimeout.TotalSeconds,
+            $"{slowest} s of script time against a {ExportBatches.WriteTimeout.TotalSeconds} s timeout");
+    }
+
     [Fact]
     public async Task EveryRowIsSentOnceInOrderAndNoRequestIsOverTheSize() {
         List<int> sizes = [];
