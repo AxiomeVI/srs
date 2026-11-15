@@ -108,9 +108,10 @@ public static class RunWatcher {
         bool NoLoadYet);
     private static PendingLeave leave;
 
-    // the last serial of a finished run's rows (a re-entry that carried
-    // nothing on or closed a chapter chain at the leave, a Return to Map split
-    // closed without a pick): they go when the next run closes its first
+    // the last serial of a finished run's rows (a re-entry from the map that
+    // carried nothing on or closed a chapter chain at the leave, a Return to
+    // Map split closed without a pick): they go when the next run closes its
+    // first
     private static int keptSerial;
 
     // the last level updated was 7A's credits, or the Epilogue they end in.
@@ -516,7 +517,7 @@ public static class RunWatcher {
                 // one leaves its rows up until the next row closes: what
                 // closed at the leave, or all of a chapter run in pieces
                 // that closed there, whatever twin of it still carries on.
-                // A Save and Quit closes nothing
+                // A Save and Quit and Continue always carries on: every row stays
                 via = "Reentry";
                 bool carried = tracker.Reentered(left.Kind, scope, room, before, control, launching, atStart,
                     chapterLoad);
