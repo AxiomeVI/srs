@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **A Save and Quit and Continue during a wake-up keeps the rows above the timer.** The segment that closed as you walked into the wake-up, such as 5B's `Central Chamber` or 2A's `Intervention`, stays up through the reload, and Cycle Shown Segment still steps back to it once the next segments close. It was cleared when nothing else was still running at the Save and Quit, for example when the run started from a savestate. Recorded times do not change.
+- **srs can trace what its detection does, and why.** Raise its log level to Verbose (`setloglevel srs verbose` in the debug console) and `log.txt` gets a `trace` line for each segment that opens, waits for control, closes with its time, or is dropped or not recorded, with the reason: entered from the wrong room, a requirement missing, a new attempt, a TAS. The default log is unchanged.
 
 ## v4.4.0 — 2026-11-10
 
