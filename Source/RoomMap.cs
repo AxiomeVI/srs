@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
@@ -10,8 +11,7 @@ internal sealed class RoomMap : IRoomMap {
 
     private readonly AreaKey area;
     private readonly string scope;
-    private readonly string firstRoom;
-    private readonly CheckpointData[] checkpoints;
+    private readonly CheckpointRooms rooms;
     private readonly HashSet<string> warned = [];
     private readonly List<MapBerry> berries = [];
     private readonly Dictionary<int, IReadOnlyCollection<string>> berriesByRule = [];
@@ -19,8 +19,11 @@ internal sealed class RoomMap : IRoomMap {
     private RoomMap(Session session) {
         area = session.Area;
         scope = SegmentAutoDetect.ScopeOf(session);
-        firstRoom = session.MapData?.StartLevel()?.Name;
-        checkpoints = AreaData.Get(session.Area)?.Mode[(int)session.Area.Mode]?.Checkpoints ?? [];
+        // a map the sheet does not cover resolves no checkpoint name
+        CheckpointData[] checkpoints = scope == null ? []
+            : AreaData.Get(session.Area)?.Mode[(int)session.Area.Mode]?.Checkpoints ?? [];
+        rooms = new CheckpointRooms(scope, session.MapData?.StartLevel()?.Name,
+            checkpoints.Select(checkpoint => new CheckpointRoom(EnglishName(checkpoint), checkpoint.Level)).ToArray());
 
         if (session.MapData == null) {
             return;
@@ -53,18 +56,18 @@ internal sealed class RoomMap : IRoomMap {
             }
 
             if (rule.Setup == StartSetup.MapSpawn
-                && !(StartRoomOf(rule) is { } start && session.MapData.Get(start) is { HasCheckpoint: true })) {
+                && !(rooms.StartRoomOf(rule) is { } start && session.MapData.Get(start) is { HasCheckpoint: true })) {
                 Logger.Log(LogLevel.Warn, "srs", $"room map: no checkpoint in the first room of {rule.Name} in {scope}: the row never opens");
             }
 
             if (rule.Setup == StartSetup.HeartRespawn
-                && !(StartRoomOf(rule) is { } heartRoom && session.MapData.Get(heartRoom) is { } heartData
+                && !(rooms.StartRoomOf(rule) is { } heartRoom && session.MapData.Get(heartRoom) is { } heartData
                      && heartData.Triggers.Exists(trigger => trigger.Name == "changeRespawnTrigger"))) {
                 Logger.Log(LogLevel.Warn, "srs", $"room map: no respawn trigger in the first room of {rule.Name} in {scope}: the row never opens");
             }
 
             if (rule.Berries != null) {
-                IReadOnlyCollection<string> keys = BerrySets.Resolve(rule.Berries, berries, CheckpointId);
+                IReadOnlyCollection<string> keys = BerrySets.Resolve(rule.Berries, berries, rooms.CheckpointId);
                 berriesByRule[rule.Order] = keys;
                 if (keys == null) {
                     Logger.Log(LogLevel.Warn, "srs", $"room map: the berries of {rule.Name} are not in the map of {scope}: the row is never recorded");
@@ -82,90 +85,21 @@ internal sealed class RoomMap : IRoomMap {
         return current;
     }
 
-    public string StartRoomOf(SegmentRule rule) =>
-        rule.Scope == scope ? StartRoomOf(rule.Anchor) : null;
+    public string StartRoomOf(SegmentRule rule) => rooms.StartRoomOf(rule);
 
-    // where a segment ends: exactly where the next one starts, so two segments
-    // never overlap. Null = no next checkpoint, the chapter's end ends it
     public string EndRoomOf(SegmentRule rule) {
-        if (rule.Scope != scope || checkpoints.Length == 0) {
-            return null;
+        string end = rooms.EndRoomOf(rule, out bool noRoomAfter);
+        if (noRoomAfter && warned.Add(rule.Anchor)) {
+            Logger.Log(LogLevel.Warn, "srs", $"room map: no start room for the checkpoint after {rule.Anchor} in {scope}");
         }
 
-        // a checkpoint the sheet cuts ends where its next piece starts
-        if (SegmentAutoDetect.SplitCheckpoints.TryGetValue((scope, rule.Anchor), out string nextPiece)) {
-            return StartRoomOf(nextPiece);
-        }
-
-        // CheckpointData only lists the non-start checkpoints
-        if (rule.Anchor == "Start") {
-            return StartRoomOf(EnglishName(checkpoints[0]));
-        }
-
-        for (int i = 0; i < checkpoints.Length - 1; i++) {
-            if (EnglishName(checkpoints[i]) == rule.Anchor) {
-                string next = StartRoomOf(EnglishName(checkpoints[i + 1]));
-                if (next == null && warned.Add(rule.Anchor)) {
-                    Logger.Log(LogLevel.Warn, "srs", $"room map: no start room for the checkpoint after {rule.Anchor} in {scope}");
-                }
-
-                return next;
-            }
-        }
-
-        return null;
+        return end;
     }
 
-    // a map-spawn or heart-respawn row is never entered, unless a walk-in opens
-    // it too (5A's berry Depths); a row with an entry
-    // of its own keeps it (4A's berry Cliff Face), the others take their anchor's
-    public string EntryRoomOf(SegmentRule rule) {
-        if (rule.Scope != scope || !rule.OpensOnWalkIn) {
-            return null;
-        }
-
-        return rule.EntryRoom ?? SegmentAutoDetect.EntryRooms.GetValueOrDefault((scope, rule.Anchor));
-    }
+    public string EntryRoomOf(SegmentRule rule) => rooms.EntryRoomOf(rule);
 
     public IReadOnlyCollection<string> BerriesOf(SegmentRule rule) =>
         rule.Scope == scope ? berriesByRule.GetValueOrDefault(rule.Order) : null;
-
-    // the map's checkpointID: 0 before the first checkpoint, then the
-    // checkpoints in order
-    private int CheckpointId(string gameName) {
-        if (gameName == "Start") {
-            return 0;
-        }
-
-        for (int i = 0; i < checkpoints.Length; i++) {
-            if (EnglishName(checkpoints[i]) == gameName) {
-                return i + 1;
-            }
-        }
-
-        return -1;
-    }
-
-    // the override when the sheet does not start the segment at the
-    // checkpoint's own room (2A Awake, 7A Start, a virtual checkpoint), the map's
-    // first room for "Start", the checkpoint's room otherwise
-    private string StartRoomOf(string gameName) {
-        if (SegmentAutoDetect.StartRoomOverrides.TryGetValue((scope, gameName), out string overridden)) {
-            return overridden;
-        }
-
-        if (gameName == "Start") {
-            return firstRoom;
-        }
-
-        foreach (CheckpointData checkpoint in checkpoints) {
-            if (EnglishName(checkpoint) == gameName) {
-                return checkpoint.Level;
-            }
-        }
-
-        return null;
-    }
 
     // CheckpointData.Name is a dialog key, translated: the tables must not
     // depend on the player's language
