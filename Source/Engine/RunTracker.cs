@@ -100,6 +100,9 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     // is tested where the player appears
     private readonly List<(SegmentRule Rule, bool FromLoad, Opening Opening)> pending = [];
     private string pendingRoom;
+    // the last leave was a Save and Quit while a start waited for control: the
+    // run had reached it, so the re-entry carries the run on
+    private bool waitedAtLeave;
     // backed out of their first room into the room it is entered from: no
     // walk-in opens them again until a new attempt
     private readonly HashSet<SegmentRule> backedOut = [];
@@ -117,6 +120,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         aside.Clear();
         pending.Clear();
         pendingRoom = null;
+        waitedAtLeave = false;
         backedOut.Clear();
     }
 
@@ -340,6 +344,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// segments that span one. It then
     /// closes what ends there and drops the rest, unrecorded.
     public List<SegmentRecord> Left(LeaveKind kind, long reading, EndState end) {
+        waitedAtLeave = kind == LeaveKind.SaveAndQuit && pending.Count > 0;
         pending.Clear();
         pendingRoom = null;
         // the attempt ends, unless a Save and Quit resumes it
@@ -394,15 +399,16 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// Restart, and after a Save and Quit the Heart Respawn ones too; the
     /// Chapter Load ones when the load played the chapter's intro. One
     /// carried on is not opened again. True when the run goes on: after a
-    /// Save and Quit, anything that can still record carried on; from the
-    /// map, a segment that already holds something it requires (one that
-    /// holds nothing is a twin the run never played for).
+    /// Save and Quit, anything that can still record carried on, or a start
+    /// waited for control at the leave; from the map, a segment that already
+    /// holds something it requires (one that holds nothing is a twin the run
+    /// never played for).
     public bool Reentered(LeaveKind kind, string scope, string room, long reading, bool control, bool launching,
         Func<SegmentRule, bool> atStart, bool chapterLoad = false) {
         open.Clear();
         pending.Clear();
         pendingRoom = null;
-        bool carried = false;
+        bool carried = waitedAtLeave;
         foreach (OpenSegment segment in aside) {
             if (kind != LeaveKind.SaveAndQuit) {
                 bool carriesOn = segment.Rule.SpansReturnToMap
