@@ -49,16 +49,21 @@ public class SrsModule : EverestModule {
             Run = action => Task.Run(action),
         });
         SheetReader.LoadCopy();
-        // Level.Update hook order: each Load wraps the previous ones, so after
-        // orig the frame runs in Load order. Hotkeys polls the input before
-        // anything reads it, RunWatcher feeds the tracker, TierComparison reads
-        // its latest record, ExportMenu reads its hotkey last
         Hotkeys.Load();
         RunWatcher.Load();
         TierComparison.Load();
-        // last: it reads Hotkeys on the frame Hotkeys updated it, and only reads
-        // what the others produced
         ExportMenu.Load();
+        On.Celeste.Level.Update += LevelOnUpdate;
+    }
+
+    // The one Level.Update hook, so the frame's order is this method and not
+    // the order of Load calls. RunWatcher.Update runs first and polls Hotkeys
+    // right after orig; the rest read that poll's Pressed, TierComparison
+    // before ExportMenu. No closure over orig: it would allocate every frame.
+    private static void LevelOnUpdate(On.Celeste.Level.orig_Update orig, Level self) {
+        RunWatcher.Update(orig, self);
+        TierComparison.Update(self);
+        ExportMenu.Update(self);
     }
 
     public override void Unload() {
@@ -66,12 +71,12 @@ public class SrsModule : EverestModule {
             return;
         }
 
+        On.Celeste.Level.Update -= LevelOnUpdate;
         // a reloaded module leaves these statics behind: nothing of theirs may send
         AutoExport.Drop();
         ExportMenu.Unload();
         TierComparison.Unload();
         RunWatcher.Unload();
-        Hotkeys.Unload();
         SheetImporter.Unload();
     }
 

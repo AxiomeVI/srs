@@ -34,13 +34,6 @@ public static class Hotkeys {
         // every key absent from its SDL -> XNA table, and a settings file
         // written through Everest's own rebind screen holds it unfiltered
         Bindable.Sanitize(SrsModule.Settings);
-
-        // hook order: see SrsModule.Load
-        On.Celeste.Level.Update += LevelOnUpdate;
-    }
-
-    public static void Unload() {
-        On.Celeste.Level.Update -= LevelOnUpdate;
     }
 
     /// Whether the hotkey fired this frame. While the level is paused only the
@@ -51,9 +44,9 @@ public static class Hotkeys {
         Set.Pressed(keybind)
         && (!levelPaused || (keybind == OpenExportMenu && ExportMenu.HoldsThePause));
 
-    private static void LevelOnUpdate(On.Celeste.Level.orig_Update orig, Level self) {
-        orig(self);
-
+    /// Polls the input once per Level.Update call, right after the game's own
+    /// update. Called by RunWatcher.Update; see SrsModule.LevelOnUpdate.
+    internal static void Poll(Level self) {
         levelPaused = self.Paused;
         // the module counts the master switch, the debug console, an
         // unfocused window and any open remap screen as a pause
