@@ -36,13 +36,9 @@ internal static class TierLine {
     /// in the basis srs measures, the row's own offset for one in file time,
     /// and null when the sheet gave none, so the row cannot be ranked.
     public static long? RankOffsetTicks(SegmentRule rule, RemoteRow remote) =>
-        !StandardInFileTime(rule) ? 0
+        !rule.StandardInFileTime ? 0
         : remote?.RankOffset is { } seconds ? SheetTiming.SecondsToTicks(seconds)
         : null;
-
-    /// Whether the row's standard is graded in file time, a basis shifted from
-    /// the chapter time srs sums: 1A's two chapter rows.
-    public static bool StandardInFileTime(SegmentRule rule) => rule.SpansLeaves && rule.Scope == "1a";
 
     /// "1a Crossing", "6a Lake": the scope, unless the name is it ("1c",
     /// Farewell's "Farewell"). The berry and full clear rows read as players
