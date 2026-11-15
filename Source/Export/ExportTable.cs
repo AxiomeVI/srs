@@ -90,10 +90,10 @@ internal static class ExportTable {
 
     // an unknown status is shown as the script sent it rather than swallowed
     public static string StatusText(string status) => status switch {
-        "notFound" => L("SRS_EXPORT_STATUS_NOTFOUND"),
-        "ambiguous" => L("SRS_EXPORT_STATUS_AMBIGUOUS"),
-        "refused" => L("SRS_EXPORT_STATUS_REFUSED"),
-        "changed" => L("SRS_EXPORT_STATUS_CHANGED"),
+        ExportStatus.NotFound => L("SRS_EXPORT_STATUS_NOTFOUND"),
+        ExportStatus.Ambiguous => L("SRS_EXPORT_STATUS_AMBIGUOUS"),
+        ExportStatus.Refused => L("SRS_EXPORT_STATUS_REFUSED"),
+        ExportStatus.Changed => L("SRS_EXPORT_STATUS_CHANGED"),
         _ => status,
     };
 
@@ -139,15 +139,15 @@ internal static class ExportTable {
                 + (labels.Count > MaxNamedRows ? $", +{labels.Count - MaxNamedRows}" : "");
         }
 
-        if (results.Any(r => r.Status == "written")) {
-            lines.Add($"{L("SRS_EXPORT_SUMMARY_WRITTEN")} {Labels("written")}");
+        if (results.Any(r => r.Status == ExportStatus.Written)) {
+            lines.Add($"{L("SRS_EXPORT_SUMMARY_WRITTEN")} {Labels(ExportStatus.Written)}");
         }
 
-        if (results.Any(r => r.Status == "unchanged")) {
-            lines.Add($"{L("SRS_EXPORT_SUMMARY_UNCHANGED")} {Labels("unchanged")}");
+        if (results.Any(r => r.Status == ExportStatus.Unchanged)) {
+            lines.Add($"{L("SRS_EXPORT_SUMMARY_UNCHANGED")} {Labels(ExportStatus.Unchanged)}");
         }
 
-        List<ExportResult> others = results.Where(r => r.Status is not ("written" or "unchanged")).ToList();
+        List<ExportResult> others = results.Where(r => r.Status is not (ExportStatus.Written or ExportStatus.Unchanged)).ToList();
         foreach (ExportResult r in others.Take(MaxOtherRows)) {
             lines.Add($"{RowLabel(r.Tab, r.Chapter, r.Cp)}: {StatusText(r.Status)}"
                 + (string.IsNullOrEmpty(r.Reason) ? "" : $" ({r.Reason})"));

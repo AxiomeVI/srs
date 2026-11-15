@@ -434,8 +434,8 @@ internal static class SheetReader {
         }
 
         for (int i = 0; i < sent.Count; i++) {
-            string time = results[i].Status == "written" ? sent[i].Time.Trim() : null;
-            string timing = results[i].Timing is "set" or "kept" ? sent[i].Timing : null;
+            string time = results[i].Status == ExportStatus.Written ? sent[i].Time.Trim() : null;
+            string timing = results[i].Timing is ExportStatus.TimingSet or ExportStatus.TimingKept ? sent[i].Timing : null;
             if (time != null || timing != null) {
                 written.Add((new SheetRowRef(sent[i].Tab, sent[i].Chapter, sent[i].Cp), time, timing));
             }

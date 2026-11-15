@@ -54,7 +54,7 @@ internal sealed class SendLedger {
                 Request request = Request.Of(sent[i]);
                 unanswered.Remove(request);
                 string status = results[i].Status;
-                if (status is "written" or "unchanged") {
+                if (status is ExportStatus.Written or ExportStatus.Unchanged) {
                     written.Add((request.Row, request.Time));
                 } else {
                     // "changed" too: the read that follows makes a new request,
