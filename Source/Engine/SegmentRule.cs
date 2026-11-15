@@ -90,6 +90,10 @@ internal sealed record SegmentRule(
     /// chapter's end it does not finish on set it aside (RunTracker.Left).
     public bool SpansLeaves { get; init; }
 
+    /// A row whose sheet standard is in file time, a basis shifted from the
+    /// chapter time srs measures (TierLine.RankOffsetTicks).
+    public bool StandardInFileTime { get; init; }
+
     /// A NextStart row whose route may return to the map instead: its end
     /// room ends it only with all it requires, and a Return to Map ends it too.
     public bool MayReturnToMap { get; init; }

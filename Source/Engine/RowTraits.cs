@@ -9,12 +9,14 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// route returns to the map, a checkpoint row whose route may return to the
 /// map instead, a checkpoint row whose route returns to the map inside it, a
 /// map-spawn row that a walk-in opens too, a row with no Save and Quit
-/// dropdown. A Full Clear label says nothing: all it requires is here.
+/// dropdown, a row whose standard is graded in file time. A Full Clear label
+/// says nothing: all it requires is here.
 internal readonly record struct RowTraits(
     bool MapSpawn = false, bool EndsOnHeart = false, Collectibles Requires = Collectibles.None,
     string EntryRoom = null, BerrySet Berries = null, bool NoBerries = false, int? Dashes = null,
     bool EndsOnReturnToMap = false, bool SpansLeaves = false, bool NoSaveAndQuitNote = false,
-    bool MayReturnToMap = false, bool AlsoWalkIn = false, bool SpansReturnToMap = false) {
+    bool MayReturnToMap = false, bool AlsoWalkIn = false, bool SpansReturnToMap = false,
+    bool StandardInFileTime = false) {
     private const Collectibles Heart = Collectibles.Heart;
     private const Collectibles Cassette = Collectibles.Cassette;
     private const Collectibles Gem = Collectibles.Gem;
@@ -49,7 +51,7 @@ internal readonly record struct RowTraits(
         // 7zb, and 11 and 10zb, belong to the rows that return to the map
         [("1a", "ARB Crossing")] = new(MapSpawn: true, AlsoWalkIn: true, Requires: Heart, Berries: new BerrySet("Crossing", Except: ["7zb"])),
         [("1a", "ARB Chasm")] = new(MapSpawn: true, AlsoWalkIn: true, Berries: new BerrySet("Chasm", Except: ["11", "10zb"])),
-        [("1a", "ARB IL")] = new(Requires: Heart, SpansLeaves: true),
+        [("1a", "ARB IL")] = new(Requires: Heart, SpansLeaves: true, StandardInFileTime: true),
         [("3a", "ARB Huge Mess")] = new(Requires: Heart),
         [("3a", "ARB IL")] = new(Requires: Heart),
         [("4a", "ARB Shrine")] = new(Requires: Heart),
@@ -76,7 +78,7 @@ internal readonly record struct RowTraits(
         [("1a", "FC Heart to RTM")] = new(EndsOnReturnToMap: true, Requires: Cassette, Berries: HeartToRtmBerries),
         [("1a", "FC Crossing to RTM")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Requires: Heart | Cassette, Berries: CrossingToRtmBerries),
         [("1a", "FC Chasm-2")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Requires: Cassette, Berries: ChasmTwoBerries),
-        [("1a", "FC IL")] = new(Requires: Heart | Cassette, SpansLeaves: true),
+        [("1a", "FC IL")] = new(Requires: Heart | Cassette, SpansLeaves: true, StandardInFileTime: true),
         // the heart of 2A's Start is a row of its own, which ends on the heart
         // collect though its label ends in RC
         [("2a", "Start Heart RC")] = new(EndsOnHeart: true),

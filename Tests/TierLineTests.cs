@@ -103,10 +103,10 @@ public class TierLineTests {
         RemoteRow with = new() { RankOffset = 2.5 };
         RemoteRow without = new();
 
-        Assert.Equal(["1a/ARB IL", "1a/FC IL"], SegmentRules.All.Where(TierLine.StandardInFileTime)
+        Assert.Equal(["1a/ARB IL", "1a/FC IL"], SegmentRules.All.Where(rule => rule.StandardInFileTime)
             .Select(rule => $"{rule.Scope}/{rule.Name}"));
         foreach (SegmentRule rule in SegmentRules.All) {
-            if (TierLine.StandardInFileTime(rule)) {
+            if (rule.StandardInFileTime) {
                 Assert.Equal(T(2.5), TierLine.RankOffsetTicks(rule, with));
                 // an older script, or a sheet never read
                 Assert.Null(TierLine.RankOffsetTicks(rule, without));
@@ -116,6 +116,10 @@ public class TierLineTests {
                 Assert.Equal(0, TierLine.RankOffsetTicks(rule, null));
             }
         }
+
+        // the trait decides, not the route or the chapter
+        SegmentRule arbIl = SegmentRules.All.Single(r => r.Scope == "1a" && r.Name == "ARB IL");
+        Assert.Equal(0, TierLine.RankOffsetTicks(arbIl with { StandardInFileTime = false }, with));
     }
 
     [Theory]
