@@ -91,12 +91,6 @@ public static class RunWatcher {
         bool NoLoadYet);
     private static PendingLeave leave;
 
-    // the last serial of a finished run's rows (a re-entry from the map that
-    // carried nothing on or closed a chapter chain at the leave, a Return to
-    // Map split closed without a pick): they go when the next run closes its
-    // first
-    private static int keptSerial;
-
     // the last level updated was 7A's credits, or the Epilogue they end in.
     // The game counts no time in either (Level.UpdateTime), so neither is an
     // attempt: the leave pending from the chapter's end is judged by the
@@ -112,23 +106,11 @@ public static class RunWatcher {
     // inside it only
     private static readonly List<string> following = [];
 
-    /// The segments closed with a time since the attempt started, oldest
-    /// first, each with its serial. A frame adds its most specific segment
-    /// (after the Heart Respawn piece closing under it, if any), then its most
-    /// specific chapter run. A load or a level from the loader empties it,
-    /// except a re-entry and a death that zeroes the clock with a chapter row
-    /// kept. A finished run's rows stay up until the next record (keptSerial).
-    /// 7A's credits and the Epilogue leave it untouched. The HUD's tier rows
-    /// show the last and step back from it.
-    internal static IReadOnlyList<(SegmentRecord Record, int Serial)> Attempt => attempt;
-    private static readonly List<(SegmentRecord Record, int Serial)> attempt = [];
-
-    /// The room the rows show in until the player leaves it: where the last
-    /// one closed, or where a re-entry that kept them landed.
-    internal static string LatestRoom { get; private set; }
-
-    /// Counts every record added, so a reader tells a new one from the same one.
-    internal static int LatestSerial { get; private set; }
+    // the rows above the timer, which TierComparison reads
+    private static readonly AttemptRows rows = new();
+    internal static IReadOnlyList<(SegmentRecord Record, int Serial)> Attempt => rows.Rows;
+    internal static string LatestRoom => rows.LatestRoom;
+    internal static int LatestSerial => rows.LatestSerial;
 
     // fields are filled at runtime by ModInterop()
 #pragma warning disable CS0649
@@ -432,7 +414,7 @@ public static class RunWatcher {
             // a load inside orig: this frame's events would mix two timelines
             via = "LoadInFrame";
             tracker.Drop();
-            attempt.Clear();
+            rows.Clear();
             leave = null;
             watched = false;
         } else if (loaded || saved) {
@@ -452,7 +434,7 @@ public static class RunWatcher {
                 tracker.RestartAtAppearance(scope, roomBefore);
             }
 
-            attempt.Clear();
+            rows.Clear();
             leave = null;
             // this frame's events start from the level the load left
             lastRoom = roomBefore;
@@ -476,7 +458,7 @@ public static class RunWatcher {
             leave = null;
             bool reentry = left != null && IsReentry(left, session, before);
             if (!reentry) {
-                attempt.Clear();
+                rows.Clear();
             }
 
             // == and not Equals: AreaKey.Equals(object) always returns false
@@ -490,27 +472,11 @@ public static class RunWatcher {
             // a re-entry carries on from the reading before orig: chapter
             // time counted before control comes back is the row's
             if (reentry) {
-                // a run that carries on keeps every row it closed. A finished
-                // one leaves its rows up until the next row closes: what
-                // closed at the leave, or all of a chapter run in pieces
-                // that closed there, whatever twin of it still carries on.
                 // A Save and Quit and Continue always carries on: every row stays
                 via = "Reentry";
                 bool carried = tracker.Reentered(left.Kind, scope, room, before, control, launching, atStart,
                     chapterLoad);
-                bool chainClosed = attempt.Exists(entry => entry.Serial > left.Serial && entry.Record.Rule.SpansLeaves);
-                if (!carried || chainClosed) {
-                    if (!chainClosed) {
-                        attempt.RemoveAll(entry => entry.Serial <= left.Serial);
-                    }
-
-                    keptSerial = LatestSerial;
-                }
-
-                if (left.Kind != LeaveKind.SaveAndQuit) {
-                    // shown in this room now
-                    LatestRoom = room;
-                }
+                rows.Reentered(carried, left.Serial, left.Kind == LeaveKind.SaveAndQuit, room);
             } else {
                 via = "LevelLoad";
                 tracker.Restart(scope, room, before, control, launching, atStart, chapterLoad: chapterLoad);
@@ -523,14 +489,14 @@ public static class RunWatcher {
             via = "Teleport";
             tracker.Restart(scope, room, before, control, launching,
                 AtStartSpawn(session, session.LevelData, session.RespawnPoint));
-            attempt.Clear();
+            rows.Clear();
             leave = null;
             restarted = true;
         } else if (!fedLastFrame) {
             // switched back on: whatever was open missed events
             via = "FeedingResumed";
             tracker.Drop();
-            attempt.Clear();
+            rows.Clear();
             watched = false;
         } else if (after < before) {
             // Level.Reload zeroes chapter time on a death in the first room
@@ -547,7 +513,7 @@ public static class RunWatcher {
             }
 
             if (!kept) {
-                attempt.Clear();
+                rows.Clear();
             }
 
             leave = null;
@@ -776,7 +742,7 @@ public static class RunWatcher {
             } else if (stage == "Stayed") {
                 // no list, or one closed without a pick: no level was left,
                 // and what closed keeps its record, up until the next row closes
-                keptSerial = LatestSerial;
+                rows.KeepUntilNextRow();
                 leave = null;
                 via = "SplitReturnToMapStayed";
                 tracker.Drop();
@@ -917,23 +883,6 @@ public static class RunWatcher {
             AutoExport.Offer([.. SessionBests.All], SegmentAutoDetect.ScopeOf(session));
         }
 
-        LatestRoom = session.Level;
-        attempt.RemoveAll(entry => entry.Serial <= keptSerial);
-        // a chapter run closes with a segment: the segment first, so the rows
-        // show the chapter run and step back to the segment
-        List<SegmentRule> rules = records.ConvertAll(record => record.Rule);
-        foreach (bool chapterRun in (bool[])[false, true]) {
-            if (Specificity.MostSpecific(rules, chapterRun, tracker.Rooms.BerriesOf) is >= 0 and int shown) {
-                // the piece run since a Save and Quit, closing under a wider row:
-                // one step back from it
-                List<SegmentRecord> pieces = records.FindAll(record => record.Rule.Setup == StartSetup.HeartRespawn);
-                if (!chapterRun && rules[shown].Setup != StartSetup.HeartRespawn
-                    && Specificity.MostSpecific(pieces.ConvertAll(record => record.Rule), false, tracker.Rooms.BerriesOf) is >= 0 and int piece) {
-                    attempt.Add((pieces[piece], ++LatestSerial));
-                }
-
-                attempt.Add((records[shown], ++LatestSerial));
-            }
-        }
+        rows.Add(records, session.Level, tracker.Rooms.BerriesOf);
     }
 }
