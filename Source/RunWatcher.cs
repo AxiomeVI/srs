@@ -171,8 +171,8 @@ public static class RunWatcher {
 
     private static bool observing;
 
-    // for the in-game tests, which play their rows by TAS: a Debug build
-    // started with this file in place counts those too
+    // a Debug build started with this marker file in place also records
+    // rows a TAS played
 #if DEBUG
     private static readonly bool testCountsTasRuns =
         System.IO.File.Exists(System.IO.Path.Combine(Everest.PathSettings, "srs", "test-auto-export-tas"));
