@@ -6,7 +6,7 @@ Options under **Mod Options → Speedrun Sheet**. What changed in each version i
 
 ## Getting started
 
-**Requirements.** Everest 1.6397 or later, and Speedrun Tool 3.27.17 or later. srs times segments with the chapter time, so records and the export do not depend on the room timer's type.
+**Requirements.** Everest 1.6397 or later, and Speedrun Tool 3.27.17 or later. A later Speedrun Tool that changes what srs reads from it leaves srs off, with a red line under its title in Mod Options, until srs is updated. srs times segments with the chapter time, so records and the export do not depend on the room timer's type.
 
 **What you see.** When you complete a segment, srs adds two rows above Speedrun Tool's room timer. On top, the segment it detected (`1a Crossing`). Below it, your time and the tier it reached, in that tier's color (`Gold`, `Purple 2`, ...), or `Unranked` past the last tier; then `PB` and what you gained (`PB -0.214`), in gold, when your own sheet is set up for export and holds a slower time; then how far you are from the next tier (`+0.140 to Purple 1`) in red. A tier needs a time strictly under its threshold, as on the sheet. `Gold` is the best tier: the sheet's WR column is a reference and ranks nothing, so a Gold time shows no gap. When several segments complete together, it shows the most specific one. The rows stay until you leave the room or make or load a savestate, and show only while the timer is on. After a chapter's end they are still there when you enter one of its checkpoints from the map. Mod Options hide each part: **Show Checkpoint Name**, **Show Time**, **Show Tier** (the tier's name; the time keeps its color), **Show PB Improvement** and **Show Delta to Next Tier**, all on by default.
 

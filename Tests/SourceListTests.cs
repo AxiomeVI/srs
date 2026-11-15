@@ -14,7 +14,7 @@ namespace Celeste.Mod.SpeedrunSheet.Tests;
 public class SourceListTests {
     private static readonly string[] GameCoupled = [
         "RunWatcher.cs", "InteropReport.cs", "TierComparison.cs", "SheetImporter.cs", "RoomMap.cs", "SrsModule.cs",
-        "SrsSettings.cs", "SegmentAutoDetect.cs", "UI/ModMenu.cs", "UI/Hotkeys.cs",
+        "SpeedrunToolMatch.cs", "SrsSettings.cs", "SegmentAutoDetect.cs", "UI/ModMenu.cs", "UI/Hotkeys.cs",
         "Export/ExportMenu.cs", "Export/ExportUrlMenu.cs", "Export/ExportTarget.cs",
         "Export/ExportClient.cs", "Export/SessionBests.cs",
     ];
