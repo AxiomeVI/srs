@@ -6,7 +6,7 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// The one place a tick count becomes a string a player sees or the sheet
 /// receives.
 public static class TimeFormat {
-    /// Speed Run Tool's own formatter, installed by SrsModule.Load, so a time
+    /// Speed Run Tool's own formatter, installed by SpeedrunToolMatch, so a time
     /// reads as its timer would show it. A delegate rather than a call, for the
     /// reason ExportProtocol.Localize is one.
     public static Func<long, string> Format;
@@ -17,7 +17,7 @@ public static class TimeFormat {
         ticks >= TimeSpan.TicksPerHour ? WithHours(ticks)
         : Format is { } format
             ? format(ticks)
-            // SrsModule fails at load rather than reach here, so this is the
+            // srs installs nothing without it, so this is the
             // test project having forgotten to install its stand-in
             : throw new InvalidOperationException(
                 "TimeFormat.Format was never set; SpeedrunTool's formatter is the only one srs has");

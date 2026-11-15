@@ -2,6 +2,8 @@
 
 # Mod Options
 MODOPTIONS_SRS_TITLE=     Speedrun Sheet
+# Shown alone under the title when srs stays off. A SubHeader never wraps: keep it to one short line
+MODOPTIONS_SRS_SPEEDRUNTOOL_MISMATCH= This Speedrun Tool does not match srs: srs is off until it is updated
 MODOPTIONS_SRS_ENABLED=   Enabled
 MODOPTIONS_SRS_SHOWTIER=  Show Tier
 MODOPTIONS_SRS_PREVIOUSSEGMENT= Cycle Shown Segment

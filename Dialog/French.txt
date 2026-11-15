@@ -2,6 +2,8 @@
 
 # Mod Options
 MODOPTIONS_SRS_TITLE=     Speedrun Sheet
+# Affichée seule sous le titre quand srs reste éteint. Un SubHeader ne passe jamais à la ligne : la garder courte
+MODOPTIONS_SRS_SPEEDRUNTOOL_MISMATCH= Ce Speedrun Tool ne correspond pas à srs : srs reste éteint jusqu'à sa mise à jour
 MODOPTIONS_SRS_ENABLED=   Activé
 MODOPTIONS_SRS_SHOWTIER=  Afficher le palier
 MODOPTIONS_SRS_PREVIOUSSEGMENT= Faire défiler le segment affiché
