@@ -43,6 +43,7 @@
         <Compile Include="../Source/Engine/RunTracker.cs" Link="Source/Engine/RunTracker.cs" />
         <Compile Include="../Source/Engine/TrackerTrace.cs" Link="Source/Engine/TrackerTrace.cs" />
         <Compile Include="../Source/Engine/Stillness.cs" Link="Source/Engine/Stillness.cs" />
+        <Compile Include="../Source/Engine/FrameReading.cs" Link="Source/Engine/FrameReading.cs" />
     </ItemGroup>
 
     <!-- snapshots of the tabs srs reads; refreshing them is how a change in

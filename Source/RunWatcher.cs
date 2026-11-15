@@ -33,23 +33,6 @@ public static class RunWatcher {
     // starts no wipe, and restores the one its state was saved under
     private static readonly long WipeEndFrame = TimeSpan.FromMilliseconds(17).Ticks;
 
-    // how the room was loaded since the last fed frame, read from LoadLevel;
-    // when several loads land in one gap, the strongest wins
-    private enum RoomLoad {
-        None,
-        // Respawn from Level.Reload: a death
-        Respawn,
-        // any intro but Respawn: a transition, or a room change the game makes
-        // in a cutscene
-        WalkIn,
-        // any other Respawn: Speed Run Tool's teleport, into another room or to
-        // a summit flag of this one
-        Teleport,
-        // a level from the loader: entering a chapter, a restart, console load,
-        // the debug map
-        Loader,
-    }
-
     private static RunTracker tracker;
 
     // the trace, at Verbose: what the tracker is being fed, written on each of
@@ -284,17 +267,11 @@ public static class RunWatcher {
     private static void LevelOnLoadLevel(On.Celeste.Level.orig_LoadLevel orig, Level self,
         Player.IntroTypes playerIntro, bool isFromLoader) {
         orig(self, playerIntro, isFromLoader);
-        RoomLoad kind = isFromLoader ? RoomLoad.Loader
-            : playerIntro != Player.IntroTypes.Respawn ? RoomLoad.WalkIn
-            : reloading ? RoomLoad.Respawn
-            : RoomLoad.Teleport;
         if (isFromLoader) {
             loaderIntro = playerIntro;
         }
 
-        if (kind > roomLoad) {
-            roomLoad = kind;
-        }
+        roomLoad = RoomLoads.Add(roomLoad, RoomLoads.Of(isFromLoader, playerIntro == Player.IntroTypes.Respawn, reloading));
 
         // here and not in Load: by a level every mod is loaded, whatever the
         // order. Below version 3 no stage says when a split lands
