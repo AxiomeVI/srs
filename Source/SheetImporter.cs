@@ -58,6 +58,7 @@ public static class SheetImporter {
                 // here too, not only after a download: offline, the cache is
                 // all a player ever runs on
                 LogMissingRows(data, "the cached sheet");
+                LogColumnDifferences(data);
             } else {
                 Logger.Log(LogLevel.Warn, LogTag, $"Cache files have no usable segments ({CachePaths})");
             }
@@ -188,6 +189,7 @@ public static class SheetImporter {
             WriteCaches(tabs.Select(CachePathOf).ToArray(), csvs);
             Logger.Log(LogLevel.Info, LogTag, $"Sheet updated: {data.SegmentCount} segments");
             LogMissingRows(data, "the sheet");
+            LogColumnDifferences(data);
             return true;
         } catch (Exception e) {
             Logger.Log(LogLevel.Warn, LogTag, $"Sheet update failed: {e}");
@@ -202,6 +204,14 @@ public static class SheetImporter {
             Logger.Log(LogLevel.Warn, LogTag,
                 $"{data.MissingRows.Count} imported row(s) not in {where}: "
                 + string.Join(", ", data.MissingRows.Select(row => $"{row.SheetChapter} / {row.Label}")));
+        }
+    }
+
+    private static void LogColumnDifferences(SheetData data) {
+        foreach ((StandardsTab tab, string[] missing, string[] extra) in data.ColumnDifferences) {
+            Logger.Log(LogLevel.Warn, LogTag,
+                $"The {StandardsTabs.Of(tab).LogName} tab's columns differ from the first tab's: "
+                + $"missing [{string.Join(", ", missing)}], extra [{string.Join(", ", extra)}]");
         }
     }
 
