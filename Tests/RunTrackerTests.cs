@@ -1449,6 +1449,67 @@ public class RunTrackerTests {
         Assert.False(t.Reentered(LeaveKind.SaveAndQuit, "1a", "1", 200, true, false, _ => false));
     }
 
+    // 5B's Through the Mirror: Central Chamber closes on the walk into c-00,
+    // and the wake-up row waits for control. A Save and Quit there, after a
+    // split's that stayed or not, or a second one in the wake-up the re-entry
+    // plays, is inside the run, and the row still opens through the re-entry
+    [Theory]
+    [InlineData("save and quit")]
+    [InlineData("split stayed first")]
+    [InlineData("twice")]
+    public void ASaveAndQuitWhileAWalkedIntoStartWaitsCarriesTheRunOn(string how) {
+        Add("Chamber", "a-02", "c-00", setup: StartSetup.CurrentRoom, scope: "5b");
+        Add("Mirror", "c-00", null, setup: StartSetup.CurrentRoom, afterWakeUp: true, entry: "b-09",
+            scope: "5b");
+        RunTracker t = Tracker();
+
+        t.Restart("5b", "a-02", 0, true, false, _ => true);
+        Assert.Equal([("Chamber", 100L)], Of(t.RoomEntered("5b", "b-09", "c-00", 100, false, false, One)));
+        if (how == "split stayed first") {
+            t.SplitStayed();
+        }
+
+        Assert.Empty(t.Left(LeaveKind.SaveAndQuit, 130, One));
+        Assert.True(t.Reentered(LeaveKind.SaveAndQuit, "5b", "c-00", 130, false, false, _ => true));
+        if (how == "twice") {
+            t.Left(LeaveKind.SaveAndQuit, 150, One);
+            Assert.True(t.Reentered(LeaveKind.SaveAndQuit, "5b", "c-00", 150, false, false, _ => true));
+        }
+
+        t.ControlReturned("c-00", 190, _ => true);
+        List<SegmentRecord> records = t.ChapterTimeStopped(400, One);
+
+        Assert.Equal([("Mirror", 210L)], Of(records));
+        Assert.Equal(SaveAndQuitNote.With, records[0].Note);
+    }
+
+    // the start waiting at a Save and Quit carries that re-entry only: not the
+    // next leave's, not one after a new attempt, and never a Return to Map's
+    [Theory]
+    [InlineData("next leave")]
+    [InlineData("new attempt")]
+    [InlineData("return to map")]
+    public void AStartWaitingAtTheLeaveCarriesOnlyThatSaveAndQuit(string how) {
+        Add("Chamber", "a-02", "c-00", setup: StartSetup.CurrentRoom, scope: "5b");
+        Add("Mirror", "c-00", null, setup: StartSetup.CurrentRoom, afterWakeUp: true, entry: "b-09",
+            scope: "5b");
+        RunTracker t = Tracker();
+
+        t.Restart("5b", "a-02", 0, true, false, _ => true);
+        t.RoomEntered("5b", "b-09", "c-00", 100, false, false, One);
+        LeaveKind kind = how == "return to map" ? LeaveKind.ReturnToMap : LeaveKind.SaveAndQuit;
+        t.Left(kind, 130, One);
+        if (how == "next leave") {
+            // a re-entry off the wake-up spawn opens nothing
+            Assert.True(t.Reentered(kind, "5b", "c-00", 130, true, false, _ => false));
+            t.Left(kind, 150, One);
+        } else if (how == "new attempt") {
+            t.Drop();
+        }
+
+        Assert.False(t.Reentered(kind, "5b", "c-00", 150, true, false, _ => false));
+    }
+
     [Theory]
     [InlineData("6", true, true)]
     // only into a room the run walked into

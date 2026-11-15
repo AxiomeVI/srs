@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A Save and Quit and Continue during a wake-up keeps the rows above the timer.** The segment that closed as you walked into the wake-up, such as 5B's `Central Chamber` or 2A's `Intervention`, stays up through the reload, and Cycle Shown Segment still steps back to it once the next segments close. It was cleared when nothing else was still running at the Save and Quit, for example when the run started from a savestate. Recorded times do not change.
+
 ## v4.4.0 — 2026-11-10
 
 - **1A's `Chasm Tape Clear` and 7A's `2000m Gem` carry on across a Return to Map**, as 7A's `FC 2000m` and `FC 2500m` do. Take the cassette or the gem, return to the map, pick the same checkpoint again, and the row goes on to its end, its time the chapter time of both pieces. The route that runs straight through still records.
