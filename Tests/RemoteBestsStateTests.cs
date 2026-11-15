@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -103,6 +104,16 @@ public class RemoteBestsStateTests {
         Assert.Equal(saved, RemoteBests.SavedAtUtc);
         // counts like an answer: a table built on the old cells must rebuild
         Assert.Equal(accepts + 1, RemoteBests.Accepts);
+    }
+
+    [Fact]
+    public void AWriteLeavesADuplicateRowAsItWasRead() {
+        RemoteBests.Reset();
+        RemoteBests.AcceptFresh([Row("Crossing", "21.948"), Row("Crossing", "1:02.000", "il")]);
+
+        RemoteBests.ApplyWritten([(Crossing, "20.000", null)]);
+
+        Assert.Equal(["21.948", "1:02.000"], RemoteBests.Rows.Select(r => r.Time));
     }
 
     [Fact]
