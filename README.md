@@ -34,7 +34,7 @@ Options under **Mod Options → Speedrun Sheet**. What changed in each version i
 
 **The reference times.** srs downloads them at launch, or when you press **Update Standards**, and keeps a copy in `Saves/srs/` (one CSV per standards tab), so it works offline. Selecting the button shows when they were last updated. When an update failed, a red line stays under it: srs then keeps the standards it had. CSVs dropped there by hand are read as they are.
 
-**When something looks wrong**, look in Celeste's `log.txt` for lines tagged `[srs]`.
+**When something looks wrong**, look in Celeste's `log.txt` for lines tagged `[srs]`. To see why a run did or did not count, turn on srs's trace: with Everest's **Debug Mode** on, open the console (`~`) and type `setloglevel srs verbose`. Until the game closes, each segment that opens, waits for control, closes with its time, or is dropped or not recorded writes a `trace` line saying why. To keep it on, change the line `LogLevels: {}` to `LogLevels: {srs: Verbose}` in `modsettings-Everest.celeste`, in Celeste's `Saves` folder, while the game is closed.
 
 **Known limits.**
 

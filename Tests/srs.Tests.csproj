@@ -41,6 +41,7 @@
         <Compile Include="../Source/Engine/SegmentRules.cs" Link="Source/Engine/SegmentRules.cs" />
         <Compile Include="../Source/Engine/CheckpointRooms.cs" Link="Source/Engine/CheckpointRooms.cs" />
         <Compile Include="../Source/Engine/RunTracker.cs" Link="Source/Engine/RunTracker.cs" />
+        <Compile Include="../Source/Engine/TrackerTrace.cs" Link="Source/Engine/TrackerTrace.cs" />
         <Compile Include="../Source/Engine/Stillness.cs" Link="Source/Engine/Stillness.cs" />
     </ItemGroup>
 
