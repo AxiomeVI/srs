@@ -170,6 +170,7 @@ public static class RunWatcher {
 #pragma warning restore CS0649
 
     private static bool observing;
+    private static bool interopsLogged;
 
     // a Debug build started with this marker file in place also records
     // rows a TAS played
@@ -269,6 +270,11 @@ public static class RunWatcher {
 
         // here and not in Load: by a level every mod is loaded, whatever the
         // order. Below version 3 no stage says when a split lands
+        if (isFromLoader && !interopsLogged) {
+            interopsLogged = true;
+            InteropReport.Log(TasImports.IsTasActive != null, SplitImports.InteropVersion?.Invoke());
+        }
+
         if (isFromLoader && !observing && SplitImports.AddSplitObserver != null
             && SplitImports.InteropVersion?.Invoke() >= 3) {
             SplitImports.AddSplitObserver(OnSplitStage);
