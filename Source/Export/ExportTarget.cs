@@ -23,7 +23,14 @@ internal static class ExportTarget {
     public static void Load() {
         DeleteTemp();
         try {
-            url = File.Exists(FilePath) ? File.ReadAllText(FilePath).Trim() : "";
+            string read = File.Exists(FilePath) ? File.ReadAllText(FilePath).Trim() : "";
+            // a hand-edited file is checked as a pasted URL is; never quoted
+            if (read.Length > 0 && !ExportProtocol.IsEndpointUrl(read)) {
+                Logger.Log(LogLevel.Warn, LogTag, "the export URL file does not hold a Web App URL (https, ending in /exec): no URL is set");
+                read = "";
+            }
+
+            url = read;
         } catch (Exception e) {
             // never the path's content: an unreadable file says nothing about the URL
             Logger.Log(LogLevel.Warn, LogTag, $"could not read the export URL file: {e.GetType().Name}");

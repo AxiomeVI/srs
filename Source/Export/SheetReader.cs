@@ -36,8 +36,9 @@ internal readonly record struct WriteToken(string Url);
 ///
 /// ⚠️ Every decision whether an answer counts, every write of the held state
 /// and every handoff of the fetch happens under `gate`; the network and the
-/// delay never do. A check made outside it can pass, then lose to a URL
-/// change or a write landing before the publish.
+/// delay never do. The saved copy is written under it too, on purpose: a save
+/// must not race a newer publish. A check made outside it can pass, then lose
+/// to a URL change or a write landing before the publish.
 internal static class SheetReader {
     private sealed class Flight {
         public string Url;

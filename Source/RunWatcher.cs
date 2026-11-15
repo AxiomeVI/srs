@@ -860,8 +860,7 @@ public static class RunWatcher {
 
         // the copy is all auto-export takes from the game thread
         if (SessionBests.Record(records, session) && SrsModule.Settings.AutoExport) {
-            AutoExport.Offer([.. SessionBests.All],
-                session == null ? null : SegmentAutoDetect.ScopeOf(session));
+            AutoExport.Offer([.. SessionBests.All], SegmentAutoDetect.ScopeOf(session));
         }
 
         LatestRoom = session.Level;
