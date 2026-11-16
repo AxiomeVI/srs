@@ -51,11 +51,15 @@ public class FrameFeedTests {
     private readonly FrameFeed feed = new();
 
     private SegmentRule Add(string name, string start, string end, EndKind endKind = EndKind.NextStart,
-        Collectibles endsOn = Collectibles.None, StartSetup setup = StartSetup.CurrentRoom) {
+        Collectibles endsOn = Collectibles.None, StartSetup setup = StartSetup.CurrentRoom, string entry = null) {
         SegmentRule rule = new("1a", name, name, StartKind.Room, setup, endKind, endsOn, Collectibles.None, null, 0, 0,
             rules.Count);
         rules.Add(rule);
         game.Map.ByName[name] = (start, end);
+        if (entry != null) {
+            game.Map.Entries[name] = entry;
+        }
+
         return rule;
     }
 
@@ -380,7 +384,7 @@ public class FrameFeedTests {
 
     private FrameOutcome Feed(FrameReading reading) {
         feed.BeforeUpdate(reading.SavedBefore.Stamp, reading.Before);
-        return feed.Frame(in reading, game);
+        return feed.Decide(in reading, game);
     }
 
     // a Current Room row in room 1, and a row from room 1's map spawn
@@ -781,5 +785,313 @@ public class FrameFeedTests {
         Assert.True(Feed(Plain() with { TasAfter = true }).TasFrame);
         Assert.Equal("Tas", feed.Via);
         Assert.False(Feed(Plain()).TasFrame);
+    }
+
+    // ---------------------------------------------------------------- the feed and the savestate fields
+
+    private SavedValues Whole(FrameReading reading) {
+        feed.BeforeUpdate(reading.SavedBefore.Stamp, reading.Before);
+        return feed.Frame(in reading, game);
+    }
+
+    private static PlayerSide At(float x, float y, bool control = true, bool launching = false, bool fall = false,
+        bool arriving = false) => new(true, control, launching, fall, arriving, x, y);
+
+    // a row walked into from room 3, its entry room
+    private void WalkInRow() {
+        Add("Crossing", "4", "9", setup: StartSetup.NextRoom, entry: "3");
+        Started();
+        feed.LastRoom = "3";
+        feed.LevelLoaded(false, false);
+    }
+
+    private static FrameReading WalkedInto(PlayerSide player) => Plain() with {
+        RoomBefore = "3", Room = "4", Player = player,
+        SavedBefore = Unmoved with { From = "3" }, SavedAfter = Unmoved with { From = "3" },
+    };
+
+    // a room entry is timed from the reading before the update, from the room
+    // the next walk-in comes from
+    [Fact]
+    public void AWalkInIsTimedFromTheReadingBeforeTheUpdate() {
+        WalkInRow();
+
+        Whole(WalkedInto(At(10, 20)));
+
+        TraceEvent opened = Assert.Single(Opened());
+        Assert.Equal(100, opened.Reading);
+        Assert.Equal("3", opened.From);
+        Assert.Equal("WalkIn", feed.Via);
+    }
+
+    // a wake-up or 6A's fall waits for control; any other room entered
+    // without it is a cutscene, which is chapter time
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(false, 1)]
+    public void AnArrivalWithoutControlWaitsAndACutsceneDoesNot(bool arriving, int opened) {
+        WalkInRow();
+
+        Whole(WalkedInto(At(10, 20, control: false, arriving: arriving)));
+
+        Assert.Equal(opened, Opened().Count());
+    }
+
+    [Fact]
+    public void AWalkInWithNoPlayerWaits() {
+        WalkInRow();
+
+        Whole(WalkedInto(default));
+
+        Assert.Empty(Opened());
+    }
+
+    // a load is no walk-in
+    [Fact]
+    public void ARoomChangeOnAnotherLoadIsNoWalkIn() {
+        WalkInRow();
+        feed.RoomLoad = RoomLoad.None;
+
+        Whole(WalkedInto(At(10, 20)) with { Room = "4" });
+
+        Assert.Empty(Opened());
+        Assert.Equal("Teleport", feed.Via);
+    }
+
+    [Fact]
+    public void TheEndOfTheLaunchIsTimedFromTheReadingAfter() {
+        StartRows();
+        feed.LastLaunching = true;
+
+        Whole(Plain());
+
+        Assert.Equal("LaunchEnded", feed.Via);
+    }
+
+    [Fact]
+    public void ControlComingBackIsAnAppearance() {
+        StartRows();
+        feed.LastControl = false;
+
+        SavedValues saved = Whole(Plain() with {
+            Player = At(30, 40), SavedAfter = Unmoved with { SpawnX = 1, SpawnY = 2, Moved = true },
+        });
+
+        Assert.Equal("ControlReturned", feed.Via);
+        Assert.Equal((30f, 40f, false), (saved.SpawnX, saved.SpawnY, saved.Moved));
+    }
+
+    // a restart that lands with control appears where the frame began: a
+    // direction held into its first frame is a move
+    [Fact]
+    public void ARestartWithControlAppearsWhereTheFrameBegan() {
+        StartRows();
+        feed.LevelLoaded(true, false);
+
+        SavedValues saved = Whole(Plain() with { PlayerBefore = At(5, 6), Player = At(7, 6) });
+
+        Assert.Equal((5f, 6f, true), (saved.SpawnX, saved.SpawnY, saved.Moved));
+    }
+
+    // a teleport, a death or a loader: whatever was last appeared at is gone
+    [Fact]
+    public void ATeleportDisturbsTheLastAppearance() {
+        StartRows();
+        feed.LevelLoaded(false, true);
+
+        SavedValues saved = Whole(Plain() with { PlayerBefore = At(10, 20, control: false), Player = At(10, 20, control: false) });
+
+        Assert.True(saved.Moved);
+    }
+
+    // a death that keeps the clock is a normal frame, and still no load
+    // may open from where the player last appeared
+    [Fact]
+    public void ADeathDisturbsTheLastAppearance() {
+        StartRows();
+        feed.Reloading = true;
+        feed.LevelLoaded(false, true);
+
+        SavedValues saved = Whole(Plain() with { PlayerBefore = At(10, 20, control: false), Player = At(10, 20, control: false) });
+
+        Assert.True(saved.Moved);
+    }
+
+    [Fact]
+    public void StandingStillKeepsTheLastAppearance() {
+        StartRows();
+
+        SavedValues saved = Whole(Plain());
+
+        Assert.Equal((10f, 20f, false), (saved.SpawnX, saved.SpawnY, saved.Moved));
+    }
+
+    [Fact]
+    public void MovingMarksTheLastAppearance() {
+        StartRows();
+
+        Assert.True(Whole(Plain() with { Player = At(10.28f, 20) }).Moved);
+    }
+
+    // 6A's watched fall is not a run: disqualified once
+    [Fact]
+    public void TheWatchedFallDisqualifiesOnce() {
+        StartRows();
+        feed.Tracker.Restart("1a", "1", 0, true, false, _ => true);
+
+        SavedValues saved = Whole(Plain() with { Player = At(10, 20, control: false, fall: true) });
+        Assert.Equal("ReflectionFall", feed.Via);
+
+        feed.Via = null;
+        Whole(Plain() with {
+            PlayerBefore = At(10, 20, control: false, fall: true), Player = At(10, 20, control: false, fall: true),
+            SavedBefore = saved, SavedAfter = saved,
+        });
+        Assert.Null(feed.Via);
+    }
+
+    // during the fall the rooms passed through are not where the run comes from
+    [Theory]
+    [InlineData(true, "0")]
+    [InlineData(false, "1")]
+    public void TheFallKeepsTheRoomTheNextWalkInComesFrom(bool fall, string from) {
+        StartRows();
+
+        SavedValues saved = Whole(Plain() with { Player = At(10, 20, fall: fall) });
+
+        Assert.Equal(from, saved.From);
+    }
+
+    [Fact]
+    public void ARestartInTheFallStillMovesTheRoomOn() {
+        StartRows();
+        feed.LevelLoaded(true, false);
+
+        Assert.Equal("1", Whole(Plain() with { Player = At(10, 20, fall: true) }).From);
+    }
+
+    // Completed turning true is the chapter's end, and a leave; TimerStopped
+    // alone closes and is no leave
+    [Fact]
+    public void TheChaptersEndIsALeave() {
+        StartRows();
+
+        Whole(Plain() with { Completed = true, Stopped = true });
+
+        Assert.Equal("ChapterEnd", feed.Via);
+        Assert.Equal(LeaveKind.ChapterEnd, feed.Leave.Kind);
+        Assert.Equal(117, feed.Leave.Reading);
+    }
+
+    [Fact]
+    public void ChapterTimeStoppingAloneIsNoLeave() {
+        StartRows();
+
+        Whole(Plain() with { Stopped = true });
+
+        Assert.Equal("TimerStopped", feed.Via);
+        Assert.Null(feed.Leave);
+    }
+
+    [Fact]
+    public void AnEdgeIsFedOnce() {
+        StartRows();
+        SavedValues saved = Whole(Plain() with { Stopped = true });
+        feed.Via = null;
+
+        Whole(Plain() with { Stopped = true, StoppedBefore = true, SavedBefore = saved, SavedAfter = saved });
+
+        Assert.Null(feed.Via);
+    }
+
+    // the credits set Completed again and change room: neither is the run's
+    [Fact]
+    public void NothingIsFedInTheCredits() {
+        StartRows();
+
+        Whole(Plain() with { Completed = true, InCredits = true });
+
+        Assert.Null(feed.Leave);
+        Assert.True(feed.AfterEnding);
+    }
+
+    [Fact]
+    public void AMapNoRowCoversFeedsNothing() {
+        StartRows();
+
+        Whole(Plain() with { Completed = true, Scope = null });
+
+        Assert.Null(feed.Leave);
+    }
+
+    [Fact]
+    public void EveryFedFrameWritesANewStamp() {
+        StartRows();
+
+        Assert.Equal(Stamp + 1, Whole(Plain()).Stamp);
+        Assert.Equal(Stamp + 1, feed.Stamp);
+        Assert.True(feed.FedLastFrame);
+    }
+
+    // Speed Run Tool's room teleport updates the level from its hotkey: two
+    // frames in a row, the first a teleport, the second a normal frame
+    [Fact]
+    public void TheTeleportsSecondUpdateIsANormalFrame() {
+        StartRows();
+        feed.LevelLoaded(false, true);
+
+        SavedValues first = Whole(Plain() with { Room = "4" });
+        Assert.Equal("Teleport", feed.Via);
+        feed.Via = null;
+
+        FrameReading second = Plain() with {
+            Before = 117, RoomBefore = "4", Room = "4", SavedBefore = first, SavedAfter = first,
+        };
+        SavedValues after = Whole(second);
+
+        Assert.Null(feed.Via);
+        Assert.Equal(Stamp + 2, after.Stamp);
+    }
+
+    // a row a TAS plays one frame of is marked before this frame's closes,
+    // and again last, so a row it opened this frame is marked too
+    [Fact]
+    public void ARowOpenedOnAFrameATasPlayedIsMarked() {
+        WalkInRow();
+
+        Whole(WalkedInto(At(10, 20)) with { TasAfter = true });
+
+        Assert.Contains(traced, e => e.Kind == TraceKind.Disqualified && e.Reason == TraceReason.TasPlayed);
+        Assert.Equal("Tas", feed.Via);
+    }
+
+    // ---------------------------------------------------------------- off
+
+    [Fact]
+    public void AFrameOffForgetsWhatAFedFrameWouldRead() {
+        StartRows();
+        feed.StateSaved = true;
+        feed.OffBeforeUpdate();
+        feed.LevelLoaded(true, false);
+        feed.Restarted(5, (1, 0));
+        LeaveBy(LeaveKind.SaveAndQuit);
+        feed.AfterEnding = true;
+
+        SavedValues saved = feed.OffAfterUpdate(Unmoved, "5", fall: false);
+
+        Assert.False(feed.FedLastFrame);
+        Assert.False(feed.StateSaved);
+        Assert.Equal(RoomLoad.None, feed.RoomLoad);
+        Assert.False(feed.ChapterRestarted);
+        Assert.Null(feed.Leave);
+        Assert.False(feed.AfterEnding);
+        Assert.Equal(Unmoved with { Moved = true, From = "5" }, saved);
+    }
+
+    [Fact]
+    public void AFrameOffInTheFallKeepsTheRoomTheWalkInComesFrom() {
+        Started();
+
+        Assert.Equal("0", feed.OffAfterUpdate(Unmoved, "5", fall: true).From);
     }
 }

@@ -252,25 +252,14 @@ public static class RunWatcher {
     /// each call to orig at once: the rows read its Pressed after this returns.
     internal static void Update(On.Celeste.Level.orig_Update orig, Level self) {
         // switched off, without Speed Run Tool's SaveLoad, or under an assist
-        // or a variant: nothing is fed. Moved is set on every frame off, so a
-        // savestate made or loaded meanwhile opens nothing
+        // or a variant: nothing is fed
         if (!SrsModule.Settings.Enabled || saveLoadAction == null || Assisted()) {
             FeedingIs(!SrsModule.Settings.Enabled ? "SwitchedOff" : saveLoadAction == null ? "NoSaveLoad" : "Assisted");
-            // cleared after orig too: a LoadLevel or a restart inside it would set them
-            feed.FedLastFrame = false;
+            feed.OffBeforeUpdate();
             restoredWipe = null;
-            feed.StateSaved = false;
             orig(self);
             Hotkeys.Poll(self);
-            feed.RoomLoad = RoomLoad.None;
-            feed.ChapterRestarted = false;
-            feed.Leave = null;
-            feed.AfterEnding = false;
-            Saved.Moved = true;
-            if (self.Tracker.GetEntity<Player>()?.StateMachine.State != Player.StReflectionFall) {
-                Saved.From = self.Session.Level;
-            }
-
+            Write(feed.OffAfterUpdate(SavedNow(), self.Session.Level, SideOf(self, self.Tracker.GetEntity<Player>()).Fall));
             return;
         }
 
@@ -278,10 +267,9 @@ public static class RunWatcher {
         // and Saved as a load left them, before this frame can move the player
         long before = self.Session.Time;
         feed.BeforeUpdate(Saved.Stamp, before);
-        Player playerBefore = self.Tracker.GetEntity<Player>();
         game.Begin(self);
         string roomBefore = self.Session.Level;
-        PlayerSide sideBefore = SideOf(self, playerBefore);
+        PlayerSide sideBefore = SideOf(self, self.Tracker.GetEntity<Player>());
         bool stoppedBefore = self.TimerStopped || self.Completed;
         bool completedBefore = self.Completed;
         bool loadWiping = self.Wipe != null && self.Wipe != restoredWipe;
@@ -295,114 +283,19 @@ public static class RunWatcher {
 
         Session session = self.Session;
         Player player = self.Tracker.GetEntity<Player>();
-        PlayerSide side = SideOf(self, player);
         FrameReading reading = new(before, roomBefore, sideBefore, stoppedBefore, completedBefore, loadWiping,
             savedBefore, tasBefore,
-            session.Time, session.Level, SegmentAutoDetect.ScopeOf(session), side,
+            session.Time, session.Level, SegmentAutoDetect.ScopeOf(session), SideOf(self, player),
             self.TimerStopped || self.Completed, self.Completed, self.InCredits,
             (session.Area.ID, (int)session.Area.Mode), EndOf(session, player), SavedNow(), TasPlaying());
-        FrameOutcome outcome = feed.Frame(in reading, game.At(self));
-        long after = reading.After;
-        string scope = reading.Scope;
-        string room = reading.Room;
-        string from = savedBefore.From;
-        bool control = side.Control;
-        bool launching = side.Launching;
-        bool stopped = reading.Stopped;
-        bool completed = reading.Completed;
-        bool ending = outcome.Ending;
-        EndState end = reading.End;
-        RoomLoad load = outcome.Load;
-        bool feeds = outcome.Feeds;
-        bool restarted = outcome.Restarted;
-        bool watched = outcome.Watched;
-        bool teleported = outcome.Teleported;
-        bool tasFrame = outcome.TasFrame;
+        Write(feed.Frame(in reading, game.At(self)));
+    }
 
-        // the credits set Completed again and change room: neither is the run's
-        if (feeds && !ending) {
-            if (side.Fall && !feed.LastFall) {
-                // 6A's watched fall is not a run of 6a Start: disqualified, not
-                // dropped, so it still closes in Lake's start room and Lake
-                // opens there
-                feed.Via = "ReflectionFall";
-                tracker.Disqualify();
-            }
-
-            // closes before opens: the stop edge, then the room entry (which
-            // closes before it opens), then the starts waiting. The chapter's
-            // end takes the reading after orig, as chapter time does; Speed
-            // Run Tool's display stops a frame short there.
-            //
-            // Completed turning true is the chapter's end, and a leave: fed
-            // once, here, so the exit that follows adds nothing. TimerStopped
-            // alone closes and is no leave: every LoadLevel resets it
-            if (completed && !feed.LastCompleted) {
-                feed.Via = "ChapterEnd";
-                feed.FeedLeave(game.At(self), LeaveKind.ChapterEnd, after, end);
-            } else if (stopped && !feed.LastStopped) {
-                feed.Via = "TimerStopped";
-                feed.Emit(game.At(self), tracker.ChapterTimeStopped(after, end));
-            }
-
-            if (room != feed.LastRoom && load == RoomLoad.WalkIn) {
-                bool opensNow = control || (side.Present && !side.Arriving);
-                feed.Via = "WalkIn";
-                feed.Emit(game.At(self), tracker.RoomEntered(scope, from, room, before, opensNow, launching, end));
-            }
-
-            // the state changes during this frame's update, and a savestate
-            // saved at the end of this frame times from the next frame: the
-            // start reading is the one after it
-            if (feed.LastLaunching && !launching) {
-                feed.Via = "LaunchEnded";
-                tracker.LaunchEnded(scope, room, after);
-            }
-
-            if (!feed.LastControl && control) {
-                feed.Via = "ControlReturned";
-                tracker.ControlReturned(room, after, game.AtPlayer());
-            }
-        }
-
-        // the player appears when control returns, when the intro jump ends
-        // (1A's too), and when a restart lands with control; a load restores
-        // the last appearance
-        bool appeared = restarted
-            ? control
-            : watched && ((!feed.LastControl && control) || (feed.LastLaunching && !launching));
-        bool disturbed = load is RoomLoad.Respawn or RoomLoad.Teleport or RoomLoad.Loader || teleported || !feed.FedLastFrame;
-        (float X, float Y)? at = side.Present ? (side.X, side.Y) : null;
-        // a restart that has control already appears where the frame began, so
-        // a direction held into its first frame is a move
-        (float X, float Y)? appearedAt = restarted && control && sideBefore.Present ? (sideBefore.X, sideBefore.Y) : at;
-        Stillness still = new Stillness(Saved.SpawnAt.X, Saved.SpawnAt.Y, Saved.Moved)
-            .After(disturbed, appeared, appearedAt)
-            .After(false, false, at);
-        Saved.SpawnAt = new Vector2(still.X, still.Y);
-        Saved.Moved = still.Moved;
-
-        if (tasFrame) {
-            feed.Via = "Tas";
-            tracker.TasPlayed();
-        }
-
-        Saved.Stamp = ++feed.Stamp;
-        // during 6A's watched fall the rooms passed through are not where the
-        // run comes from: 00 is entered from start, as after either skip
-        if (restarted || !watched || !side.Fall) {
-            Saved.From = room;
-        }
-
-        feed.LastRoom = room;
-        feed.LastLaunching = launching;
-        feed.LastFall = side.Fall;
-        feed.LastControl = control;
-        feed.LastStopped = stopped;
-        feed.LastCompleted = completed;
-        feed.AfterEnding = ending;
-        feed.ChapterRestarted = false;
-        feed.FedLastFrame = true;
+    private static void Write(SavedValues saved) {
+        Saved.Stamp = saved.Stamp;
+        Saved.From = saved.From;
+        Saved.SpawnAt = new Vector2(saved.SpawnX, saved.SpawnY);
+        Saved.Moved = saved.Moved;
     }
 
     // a savestate further into the room does not play it: the point must be on

@@ -151,9 +151,59 @@ internal sealed class FrameFeed {
         InUpdate = true;
     }
 
-    /// After the game's update of a fed frame: what it means, first match
-    /// wins. Feeds nothing by itself but the restarts.
-    public FrameOutcome Frame(in FrameReading r, IFrameGame game) {
+    /// After the game's update of a fed frame: what it means, then the edges
+    /// it feeds, closes before opens. Returns what RunWatcher.Saved holds from
+    /// now on.
+    public SavedValues Frame(in FrameReading r, IFrameGame game) {
+        FrameOutcome o = Decide(in r, game);
+        PlayerSide player = r.Player;
+        // the credits set Completed again and change room: neither is the run's
+        if (o.Feeds && !o.Ending) {
+            FeedEdges(in r, game, o.Load);
+        }
+
+        // the player appears when control returns, when the intro jump ends
+        // (1A's too), and when a restart lands with control; a load restores
+        // the last appearance
+        bool appeared = o.Restarted
+            ? player.Control
+            : o.Watched && ((!LastControl && player.Control) || (LastLaunching && !player.Launching));
+        bool disturbed = o.Load is RoomLoad.Respawn or RoomLoad.Teleport or RoomLoad.Loader || o.Teleported
+                         || !FedLastFrame;
+        (float X, float Y)? at = player.Present ? (player.X, player.Y) : null;
+        // a restart that has control already appears where the frame began, so
+        // a direction held into its first frame is a move
+        (float X, float Y)? appearedAt = o.Restarted && player.Control && r.PlayerBefore.Present
+            ? (r.PlayerBefore.X, r.PlayerBefore.Y)
+            : at;
+        Stillness still = new Stillness(r.SavedAfter.SpawnX, r.SavedAfter.SpawnY, r.SavedAfter.Moved)
+            .After(disturbed, appeared, appearedAt)
+            .After(false, false, at);
+
+        if (o.TasFrame) {
+            Via = "Tas";
+            tracker.TasPlayed();
+        }
+
+        // during 6A's watched fall the rooms passed through are not where the
+        // run comes from: 00 is entered from start, as after either skip
+        string from = o.Restarted || !o.Watched || !player.Fall ? r.Room : r.SavedAfter.From;
+
+        LastRoom = r.Room;
+        LastLaunching = player.Launching;
+        LastFall = player.Fall;
+        LastControl = player.Control;
+        LastStopped = r.Stopped;
+        LastCompleted = r.Completed;
+        AfterEnding = o.Ending;
+        ChapterRestarted = false;
+        FedLastFrame = true;
+        return new SavedValues(++Stamp, from, still.X, still.Y, still.Moved);
+    }
+
+    /// What a fed frame means, first match wins. Feeds nothing but the
+    /// restarts and the rows a Restart Chapter closes.
+    internal FrameOutcome Decide(in FrameReading r, IFrameGame game) {
         InUpdate = false;
         // a row a TAS played one frame of is never recorded, whoever ends it:
         // a TAS may hand control back mid-row (QuicksaveMod replays one from
@@ -301,6 +351,73 @@ internal sealed class FrameFeed {
         }
 
         return new FrameOutcome(feeds, restarted, watched, teleported, load, tasFrame, ending);
+    }
+
+    // closes before opens: the stop edge, then the room entry (which closes
+    // before it opens), then the starts waiting
+    private void FeedEdges(in FrameReading r, IFrameGame game, RoomLoad load) {
+        PlayerSide player = r.Player;
+        if (player.Fall && !LastFall) {
+            // 6A's watched fall is not a run of 6a Start: disqualified, not
+            // dropped, so it still closes in Lake's start room and Lake
+            // opens there
+            Via = "ReflectionFall";
+            tracker.Disqualify();
+        }
+
+        // The chapter's end takes the reading after orig, as chapter time
+        // does; Speed Run Tool's display stops a frame short there.
+        //
+        // Completed turning true is the chapter's end, and a leave: fed
+        // once, here, so the exit that follows adds nothing. TimerStopped
+        // alone closes and is no leave: every LoadLevel resets it
+        if (r.Completed && !LastCompleted) {
+            Via = "ChapterEnd";
+            FeedLeave(game, LeaveKind.ChapterEnd, r.After, r.End);
+        } else if (r.Stopped && !LastStopped) {
+            Via = "TimerStopped";
+            Emit(game, tracker.ChapterTimeStopped(r.After, r.End));
+        }
+
+        // a room entry is timed from the reading before the update
+        if (r.Room != LastRoom && load == RoomLoad.WalkIn) {
+            bool opensNow = player.Control || (player.Present && !player.Arriving);
+            Via = "WalkIn";
+            Emit(game, tracker.RoomEntered(r.Scope, r.SavedBefore.From, r.Room, r.Before, opensNow, player.Launching,
+                r.End));
+        }
+
+        // the state changes during this frame's update, and a savestate
+        // saved at the end of this frame times from the next frame: the
+        // start reading is the one after it
+        if (LastLaunching && !player.Launching) {
+            Via = "LaunchEnded";
+            tracker.LaunchEnded(r.Scope, r.Room, r.After);
+        }
+
+        if (!LastControl && player.Control) {
+            Via = "ControlReturned";
+            tracker.ControlReturned(r.Room, r.After, game.AtPlayer());
+        }
+    }
+
+    /// A frame srs does not feed (switched off, no SaveLoad, an assist),
+    /// before the game's update.
+    public void OffBeforeUpdate() {
+        FedLastFrame = false;
+        StateSaved = false;
+    }
+
+    /// The same frame after the update: a LoadLevel or a restart inside it
+    /// would have set these. Moved is set on every frame off, so a savestate
+    /// made or loaded meanwhile opens nothing; during 6A's watched fall the
+    /// room is not where a walk-in comes from.
+    public SavedValues OffAfterUpdate(SavedValues saved, string room, bool fall) {
+        RoomLoad = RoomLoad.None;
+        ChapterRestarted = false;
+        Leave = null;
+        AfterEnding = false;
+        return saved with { Moved = true, From = fall ? saved.From : room };
     }
 
     // whether this level from the loader carries on from the leave: the same
