@@ -7,9 +7,10 @@ using MonoMod.ModInterop;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
-// Feeds RunTracker from the game: chapter time, how each room was reached, the
-// player's control, the collects, the frame chapter time stops and Restart
-// Chapter.
+// Reads the game for FrameFeed, which decides: chapter time, how each room was
+// reached, the player's control, the collects, the frame chapter time stops
+// and Restart Chapter. Keeps the hooks, the savestate fields and the spawn
+// tests that need map data.
 public static class RunWatcher {
     // a room walked into in one of these waits for control: a wake-up is the
     // "Wake Up" row's, and 6A's watched fall is no row's. Any other room
@@ -30,10 +31,6 @@ public static class RunWatcher {
 
     // every never-saved piece of state, the tracker and the rows above the timer
     private static readonly FrameFeed feed = new();
-    private static RunTracker tracker => feed.Tracker;
-
-    // the trace, at Verbose: why nothing is fed (null while it is)
-    private static string notFed;
 
     // game state, saved and restored with each savestate: a stamp written on
     // every fed frame (a load puts back an older one, which is how a load is
@@ -152,14 +149,9 @@ public static class RunWatcher {
         }
     }
 
-    // once per edge, never per frame
     private static void FeedingIs(string reason) {
-        if (reason != notFed) {
-            if (Tracing) {
-                Logger.Log(LogLevel.Verbose, "srs", $"trace Feeding reason={reason ?? "Resumed"}");
-            }
-
-            notFed = reason;
+        if (feed.FeedingIs(reason) && Tracing) {
+            Logger.Log(LogLevel.Verbose, "srs", $"trace Feeding reason={reason ?? "Resumed"}");
         }
     }
 
@@ -222,15 +214,11 @@ public static class RunWatcher {
         }
     }
 
-    // Restart Chapter makes the new session with no room, with or without the
-    // wipe; a golden berry restart names its room. Nothing updates the old
-    // session afterwards, so its time is the run's last chapter time
+    // nothing updates the old session afterwards, so its time is the run's
+    // last chapter time
     private static Session SessionOnRestart(On.Celeste.Session.orig_Restart orig, Session self, string intoLevel) {
         Session restarted = orig(self, intoLevel);
-        if (intoLevel == null) {
-            feed.Restarted(self.Time, (self.Area.ID, (int)self.Area.Mode));
-        }
-
+        feed.Restarted(intoLevel, self.Time, (self.Area.ID, (int)self.Area.Mode));
         return restarted;
     }
 

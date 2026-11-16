@@ -358,7 +358,7 @@ public class FrameFeedTests {
     [Fact]
     public void RestartChapterKeepsTheOldSessionsTimeAndArea() {
         Started();
-        feed.Restarted(1234, (2, 0));
+        feed.Restarted(null, 1234, (2, 0));
 
         Assert.True(feed.ChapterRestarted);
         Assert.Equal(1234, feed.RestartedTime);
@@ -658,7 +658,7 @@ public class FrameFeedTests {
         Add("Start RC", "1", null, EndKind.Restart);
         Started();
         feed.Tracker.Restart("1a", "1", 0, true, false, _ => true);
-        feed.Restarted(250, (1, 0));
+        feed.Restarted(null, 250, (1, 0));
         feed.LevelLoaded(true, false);
 
         Feed(Plain());
@@ -672,7 +672,7 @@ public class FrameFeedTests {
         Add("Start RC", "1", null, EndKind.Restart);
         Started();
         feed.Tracker.Restart("1a", "1", 0, true, false, _ => true);
-        feed.Restarted(250, (2, 0));
+        feed.Restarted(null, 250, (2, 0));
         feed.LevelLoaded(true, false);
 
         Feed(Plain());
@@ -1073,7 +1073,7 @@ public class FrameFeedTests {
         feed.StateSaved = true;
         feed.OffBeforeUpdate();
         feed.LevelLoaded(true, false);
-        feed.Restarted(5, (1, 0));
+        feed.Restarted(null, 5, (1, 0));
         LeaveBy(LeaveKind.SaveAndQuit);
         feed.AfterEnding = true;
 
@@ -1093,5 +1093,24 @@ public class FrameFeedTests {
         Started();
 
         Assert.Equal("0", feed.OffAfterUpdate(Unmoved, "5", fall: true).From);
+    }
+
+    // ---------------------------------------------------------------- the trace's edges
+
+    [Fact]
+    public void AGoldenBerryRestartNamesItsRoomAndIsNoRestartChapter() {
+        Started();
+        feed.Restarted("3", 1234, (1, 0));
+
+        Assert.False(feed.ChapterRestarted);
+    }
+
+    [Fact]
+    public void WhyNothingIsFedIsToldOncePerEdge() {
+        Assert.True(feed.FeedingIs("SwitchedOff"));
+        Assert.False(feed.FeedingIs("SwitchedOff"));
+        Assert.True(feed.FeedingIs(null));
+        Assert.False(feed.FeedingIs(null));
+        Assert.True(feed.FeedingIs("Assisted"));
     }
 }

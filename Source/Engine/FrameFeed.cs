@@ -439,6 +439,20 @@ internal sealed class FrameFeed {
         return game.AtCheckpointSpawnPastStartRoom();
     }
 
+    // why nothing is fed (null while it is), for the trace
+    private string notFed;
+
+    /// Whether why nothing is fed changed: the trace says so once per edge,
+    /// never per frame. Null: fed.
+    public bool FeedingIs(string reason) {
+        if (reason == notFed) {
+            return false;
+        }
+
+        notFed = reason;
+        return true;
+    }
+
     /// An event is fed only with srs on and Speed Run Tool's SaveLoad bound,
     /// once a frame was fed, and not between a load and its first frame.
     private bool Accepts(bool on, long savedStamp) => on && FedLastFrame && savedStamp == Stamp;
@@ -453,8 +467,14 @@ internal sealed class FrameFeed {
         RoomLoad = RoomLoads.Add(RoomLoad, RoomLoads.Of(fromLoader, respawnIntro, Reloading));
     }
 
-    /// Restart Chapter made the new session: time is the old one's last.
-    public void Restarted(long time, (int Id, int Mode) area) {
+    /// A new session made from the old one, into a room or none. Restart
+    /// Chapter makes it with no room, with or without the wipe; a golden
+    /// berry restart names its room and is none. Time is the old one's last.
+    public void Restarted(string intoRoom, long time, (int Id, int Mode) area) {
+        if (intoRoom != null) {
+            return;
+        }
+
         ChapterRestarted = true;
         RestartedTime = time;
         RestartedArea = area;
