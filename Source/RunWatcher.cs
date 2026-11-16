@@ -33,11 +33,11 @@ public static class RunWatcher {
     // starts no wipe, and restores the one its state was saved under
     private static readonly long WipeEndFrame = TimeSpan.FromMilliseconds(17).Ticks;
 
-    private static RunTracker tracker;
+    // every never-saved piece of state, the tracker and the rows above the timer
+    private static readonly FrameFeed feed = new();
+    private static RunTracker tracker => feed.Tracker;
 
-    // the trace, at Verbose: what the tracker is being fed, written on each of
-    // its lines, and why nothing is fed (null while it is)
-    private static string via;
+    // the trace, at Verbose: why nothing is fed (null while it is)
     private static string notFed;
 
     // game state, saved and restored with each savestate: a stamp written on
@@ -56,61 +56,21 @@ public static class RunWatcher {
     // the wipe the last load restored with the level, before a player load
     // starts its own; read and cleared on the next frame
     private static ScreenWipe restoredWipe;
-    // a savestate made since the last fed frame. Outside Saved: a load must
-    // not bring it back
-    private static bool stateSaved;
-
-    // never saved: what a load is compared against. stamp only grows, so a
-    // saved stamp differs from it once a frame has been fed since the save
-    private static long stamp;
+    // never saved: the edges against the last fed frame
     private static string lastRoom;
     private static int lastState = -1;
     private static bool lastControl = true;
     private static bool lastStopped;
     private static bool lastCompleted;
-    private static bool fedLastFrame;
-    private static RoomLoad roomLoad;
-    // the intro of the last LoadLevel from the loader, read with a Loader
-    // roomLoad that same call set: Respawn unless the session starts the chapter
-    private static Player.IntroTypes loaderIntro;
-    // inside Level.Reload, the game's only LoadLevel(Respawn)
-    private static bool reloading;
-
-    // Restart Chapter, seen when the new session is made: the old session's
-    // last chapter time, for the rows that end on it
-    private static bool chapterRestarted;
-    private static long restartedTime;
-    private static AreaKey restartedArea;
-
-    // the level was left, and no level from the loader has been judged
-    // against it yet. Reading is chapter time at the leave, Serial the last
-    // record before the leave closed anything. NoLoadYet: a split button's
-    // leave, until its mod says it loads a level for it. Never saved: a state
-    // load is a new attempt, and clears it
-    private sealed record PendingLeave(LeaveKind Kind, AreaKey Area, string Room, long Reading, int Serial,
-        bool NoLoadYet);
-    private static PendingLeave leave;
-
-    // the last level updated was 7A's credits, or the Epilogue they end in.
-    // The game counts no time in either (Level.UpdateTime), so neither is an
-    // attempt: the leave pending from the chapter's end is judged by the
-    // level entered after them. Never saved: a state load clears the leave
-    private static bool afterEnding;
-
-    // the frame being fed: a collect inside it is timed from its start, as
-    // a room entry is (Session.Time already counts the frame by then)
-    private static bool inUpdate;
-    private static long frameStart;
 
     // the berries following the player, rebuilt on every fed frame and read
     // inside it only
     private static readonly List<string> following = [];
 
     // the rows above the timer, which TierComparison reads
-    private static readonly AttemptRows rows = new();
-    internal static IReadOnlyList<(SegmentRecord Record, int Serial)> Attempt => rows.Rows;
-    internal static string LatestRoom => rows.LatestRoom;
-    internal static int LatestSerial => rows.LatestSerial;
+    internal static IReadOnlyList<(SegmentRecord Record, int Serial)> Attempt => feed.Rows.Rows;
+    internal static string LatestRoom => feed.Rows.LatestRoom;
+    internal static int LatestSerial => feed.Rows.LatestSerial;
 
     // fields are filled at runtime by ModInterop()
 #pragma warning disable CS0649
@@ -181,13 +141,13 @@ public static class RunWatcher {
         // wipe starts. clearState stays unwired: clearing a slot rewinds
         // nothing, and a TAS may clear the slots as it starts
         wipeAction = SaveLoadImports.RegisterSaveLoadAction?.Invoke(
-            (_, _) => stateSaved = true,
+            (_, _) => feed.StateSaved = true,
             (_, level) => restoredWipe = level.Wipe, null, null, null, null);
 
         typeof(SplitImports).ModInterop();
         typeof(TasImports).ModInterop();
 
-        tracker = new RunTracker(SegmentRules.All, null) { Trace = WriteTrace };
+        feed.StartTracker(SegmentRules.All, WriteTrace);
     }
 
     // no line is built unless the tag logs at Verbose (`setloglevel srs verbose`)
@@ -200,7 +160,7 @@ public static class RunWatcher {
                 e = e with { Record = record with { Note = SaveAndQuitNote.Unknown, ReturnToMap = ReturnToMapNote.Unknown } };
             }
 
-            Logger.Log(LogLevel.Verbose, "srs", TraceLine.Format(e, via));
+            Logger.Log(LogLevel.Verbose, "srs", TraceLine.Format(e, feed.Via));
         }
     }
 
@@ -239,7 +199,7 @@ public static class RunWatcher {
         observing = false;
 
         restoredWipe = null;
-        leave = null;
+        feed.Leave = null;
     }
 
     // every room load passes here; the kinds are RoomLoad's. A cutscene's room
@@ -249,11 +209,7 @@ public static class RunWatcher {
     private static void LevelOnLoadLevel(On.Celeste.Level.orig_LoadLevel orig, Level self,
         Player.IntroTypes playerIntro, bool isFromLoader) {
         orig(self, playerIntro, isFromLoader);
-        if (isFromLoader) {
-            loaderIntro = playerIntro;
-        }
-
-        roomLoad = RoomLoads.Add(roomLoad, RoomLoads.Of(isFromLoader, playerIntro == Player.IntroTypes.Respawn, reloading));
+        feed.LevelLoaded(isFromLoader, playerIntro == Player.IntroTypes.Respawn);
 
         // here and not in Load: by a level every mod is loaded, whatever the
         // order. Below version 3 no stage says when a split lands
@@ -270,11 +226,11 @@ public static class RunWatcher {
     }
 
     private static void LevelOnReload(On.Celeste.Level.orig_Reload orig, Level self) {
-        reloading = true;
+        feed.Reloading = true;
         try {
             orig(self);
         } finally {
-            reloading = false;
+            feed.Reloading = false;
         }
     }
 
@@ -284,9 +240,7 @@ public static class RunWatcher {
     private static Session SessionOnRestart(On.Celeste.Session.orig_Restart orig, Session self, string intoLevel) {
         Session restarted = orig(self, intoLevel);
         if (intoLevel == null) {
-            chapterRestarted = true;
-            restartedTime = self.Time;
-            restartedArea = self.Area;
+            feed.Restarted(self.Time, (self.Area.ID, (int)self.Area.Mode));
         }
 
         return restarted;
@@ -315,15 +269,15 @@ public static class RunWatcher {
         if (!SrsModule.Settings.Enabled || saveLoadAction == null || Assisted()) {
             FeedingIs(!SrsModule.Settings.Enabled ? "SwitchedOff" : saveLoadAction == null ? "NoSaveLoad" : "Assisted");
             // cleared after orig too: a LoadLevel or a restart inside it would set them
-            fedLastFrame = false;
+            feed.FedLastFrame = false;
             restoredWipe = null;
-            stateSaved = false;
+            feed.StateSaved = false;
             orig(self);
             Hotkeys.Poll(self);
-            roomLoad = RoomLoad.None;
-            chapterRestarted = false;
-            leave = null;
-            afterEnding = false;
+            feed.RoomLoad = RoomLoad.None;
+            feed.ChapterRestarted = false;
+            feed.Leave = null;
+            feed.AfterEnding = false;
             Saved.Moved = true;
             if (self.Tracker.GetEntity<Player>()?.StateMachine.State != Player.StReflectionFall) {
                 Saved.From = self.Session.Level;
@@ -334,15 +288,15 @@ public static class RunWatcher {
 
         // before orig: the reading a room entry is timed from, and the level
         // and Saved as a load left them, before this frame can move the player
-        bool loaded = Saved.Stamp != stamp;
+        bool loaded = Saved.Stamp != feed.Stamp;
         if (loaded) {
             // a room loaded before the load belongs to the timeline it left
-            roomLoad = RoomLoad.None;
+            feed.RoomLoad = RoomLoad.None;
         }
 
         // making a savestate is a new attempt too, as if it were loaded at once
-        bool saved = stateSaved && !loaded;
-        stateSaved = false;
+        bool saved = feed.StateSaved && !loaded;
+        feed.StateSaved = false;
 
         long before = self.Session.Time;
         Player playerBefore = self.Tracker.GetEntity<Player>();
@@ -362,11 +316,11 @@ public static class RunWatcher {
 
         FeedingIs(null);
         bool tasBefore = TasPlaying();
-        frameStart = before;
-        inUpdate = true;
+        feed.FrameStart = before;
+        feed.InUpdate = true;
         orig(self);
         Hotkeys.Poll(self);
-        inUpdate = false;
+        feed.InUpdate = false;
 
         // a row a TAS played one frame of is never recorded, whoever ends it:
         // a TAS may hand control back mid-row (QuicksaveMod replays one from
@@ -375,7 +329,7 @@ public static class RunWatcher {
         // opened this frame is marked too
         bool tasFrame = tasBefore || TasPlaying();
         if (tasFrame) {
-            via = "Tas";
+            feed.Via = "Tas";
             tracker.TasPlayed();
         }
 
@@ -392,30 +346,30 @@ public static class RunWatcher {
         // the Epilogue counts as an ending only while the last level updated
         // was one: afterEnding is rewritten by a level update only, so one
         // entered again after the credits stays transparent
-        bool ending = self.InCredits || (afterEnding && session.Area.ID == 8);
+        bool ending = self.InCredits || (feed.AfterEnding && session.Area.ID == 8);
         tracker.Rooms = RoomMap.For(session);
         EndState end = EndOf(session, player);
-        RoomLoad load = roomLoad;
-        roomLoad = RoomLoad.None;
+        RoomLoad load = feed.RoomLoad;
+        feed.RoomLoad = RoomLoad.None;
         // a room change no LoadLevel walked into is a teleport too. Not on a
         // load: the state's room is not a room change
-        bool teleported = Saved.Stamp == stamp
+        bool teleported = Saved.Stamp == feed.Stamp
                           && (load == RoomLoad.Teleport
-                              || (fedLastFrame && room != lastRoom && load < RoomLoad.WalkIn));
+                              || (feed.FedLastFrame && room != lastRoom && load < RoomLoad.WalkIn));
 
-        bool feed = false;
+        bool feeds = false;
         // a new attempt landed this frame, so the player appears now if they
         // have control
         bool restarted = false;
         // this frame's control and state edges are the player's own: not on a
         // load inside orig, nor on the frame srs is switched back on
         bool watched = true;
-        if (!loaded && Saved.Stamp != stamp) {
+        if (!loaded && Saved.Stamp != feed.Stamp) {
             // a load inside orig: this frame's events would mix two timelines
-            via = "LoadInFrame";
+            feed.Via = "LoadInFrame";
             tracker.Drop();
-            rows.Clear();
-            leave = null;
+            feed.Rows.Clear();
+            feed.Leave = null;
             watched = false;
         } else if (loaded || saved) {
             // every load is a new attempt. With control, the room's Current Room
@@ -425,7 +379,7 @@ public static class RunWatcher {
             // a row a TAS plays is never recorded)
             bool wipeEnd = (saved || loadWiping)
                            && SpeedrunToolSettings.Instance?.FreezeAfterLoadStateType == FreezeAfterLoadStateType.Off;
-            via = loaded ? "SavestateLoad" : "SavestateMade";
+            feed.Via = loaded ? "SavestateLoad" : "SavestateMade";
             if (controlBefore) {
                 tracker.Restart(scope, roomBefore, before - (wipeEnd ? WipeEndFrame : 0), true,
                     stateBefore == Player.StIntroJump,
@@ -434,15 +388,15 @@ public static class RunWatcher {
                 tracker.RestartAtAppearance(scope, roomBefore);
             }
 
-            rows.Clear();
-            leave = null;
+            feed.Rows.Clear();
+            feed.Leave = null;
             // this frame's events start from the level the load left
             lastRoom = roomBefore;
             lastState = stateBefore;
             lastControl = controlBefore;
             lastStopped = stoppedBefore;
             lastCompleted = completedBefore;
-            feed = scope != null;
+            feeds = scope != null;
         } else if (load == RoomLoad.Loader && ending) {
             // the leave and what is set aside wait for the level entered after
             // it. The rows shown do not: TierComparison dismisses them in the
@@ -453,32 +407,31 @@ public static class RunWatcher {
             // starts off screen). A checkpoint entered from chapter select
             // counts without its wake-up
             Func<SegmentRule, bool> atStart = AtStartSpawn(session, session.LevelData, session.RespawnPoint);
-            bool chapterLoad = loaderIntro != Player.IntroTypes.Respawn;
-            PendingLeave left = leave;
-            leave = null;
+            bool chapterLoad = !feed.LoaderIntroRespawn;
+            FrameFeed.PendingLeave left = feed.Leave;
+            feed.Leave = null;
             bool reentry = left != null && IsReentry(left, session, before);
             if (!reentry) {
-                rows.Clear();
+                feed.Rows.Clear();
             }
 
-            // == and not Equals: AreaKey.Equals(object) always returns false
-            if (chapterRestarted && restartedArea == session.Area) {
+            if (feed.ChapterRestarted && feed.RestartedArea == (session.Area.ID, (int)session.Area.Mode)) {
                 // the rows ending on Restart Chapter close first, on the old
                 // session's time; the restart then drops the rest unrecorded
-                via = "RestartChapter";
-                Emit(session, tracker.ChapterRestarted(restartedTime, end));
+                feed.Via = "RestartChapter";
+                feed.Emit(game.At(self), tracker.ChapterRestarted(feed.RestartedTime, end));
             }
 
             // a re-entry carries on from the reading before orig: chapter
             // time counted before control comes back is the row's
             if (reentry) {
                 // A Save and Quit and Continue always carries on: every row stays
-                via = "Reentry";
+                feed.Via = "Reentry";
                 bool carried = tracker.Reentered(left.Kind, scope, room, before, control, launching, atStart,
                     chapterLoad);
-                rows.Reentered(carried, left.Serial, left.Kind == LeaveKind.SaveAndQuit, room);
+                feed.Rows.Reentered(carried, left.Serial, left.Kind == LeaveKind.SaveAndQuit, room);
             } else {
-                via = "LevelLoad";
+                feed.Via = "LevelLoad";
                 tracker.Restart(scope, room, before, control, launching, atStart, chapterLoad: chapterLoad);
             }
 
@@ -486,17 +439,17 @@ public static class RunWatcher {
         } else if (teleported) {
             // Speed Run Tool's room teleport skips rooms without lowering chapter
             // time: a new attempt from the spawn it put the player on
-            via = "Teleport";
+            feed.Via = "Teleport";
             tracker.Restart(scope, room, before, control, launching,
                 AtStartSpawn(session, session.LevelData, session.RespawnPoint));
-            rows.Clear();
-            leave = null;
+            feed.Rows.Clear();
+            feed.Leave = null;
             restarted = true;
-        } else if (!fedLastFrame) {
+        } else if (!feed.FedLastFrame) {
             // switched back on: whatever was open missed events
-            via = "FeedingResumed";
+            feed.Via = "FeedingResumed";
             tracker.Drop();
-            rows.Clear();
+            feed.Rows.Clear();
             watched = false;
         } else if (after < before) {
             // Level.Reload zeroes chapter time on a death in the first room
@@ -505,7 +458,7 @@ public static class RunWatcher {
             // lets a chapter row from the map keep the time read before it
             Func<SegmentRule, bool> spawn = AtStartSpawn(session, session.LevelData, session.RespawnPoint);
             bool firstRoomDeath = load == RoomLoad.Respawn && room == lastRoom;
-            via = firstRoomDeath ? "FirstRoomDeath" : "ClockReset";
+            feed.Via = firstRoomDeath ? "FirstRoomDeath" : "ClockReset";
             // a chapter row kept through it keeps the rows of its pieces
             bool kept = firstRoomDeath && tracker.ClockZeroed(scope, room, before, after, control, launching, spawn);
             if (!firstRoomDeath) {
@@ -513,22 +466,22 @@ public static class RunWatcher {
             }
 
             if (!kept) {
-                rows.Clear();
+                feed.Rows.Clear();
             }
 
-            leave = null;
+            feed.Leave = null;
             restarted = true;
         } else {
-            feed = scope != null;
+            feeds = scope != null;
         }
 
         // the credits set Completed again and change room: neither is the run's
-        if (feed && !ending) {
+        if (feeds && !ending) {
             if (state == Player.StReflectionFall && lastState != Player.StReflectionFall) {
                 // 6A's watched fall is not a run of 6a Start: disqualified, not
                 // dropped, so it still closes in Lake's start room and Lake
                 // opens there
-                via = "ReflectionFall";
+                feed.Via = "ReflectionFall";
                 tracker.Disqualify();
             }
 
@@ -541,29 +494,29 @@ public static class RunWatcher {
             // once, here, so the exit that follows adds nothing. TimerStopped
             // alone closes and is no leave: every LoadLevel resets it
             if (completed && !lastCompleted) {
-                via = "ChapterEnd";
-                FeedLeave(session, LeaveKind.ChapterEnd, after, end);
+                feed.Via = "ChapterEnd";
+                feed.FeedLeave(game.At(self), LeaveKind.ChapterEnd, after, end);
             } else if (stopped && !lastStopped) {
-                via = "TimerStopped";
-                Emit(session, tracker.ChapterTimeStopped(after, end));
+                feed.Via = "TimerStopped";
+                feed.Emit(game.At(self), tracker.ChapterTimeStopped(after, end));
             }
 
             if (room != lastRoom && load == RoomLoad.WalkIn) {
                 bool opensNow = control || (player != null && !ArrivalStates.Contains(state));
-                via = "WalkIn";
-                Emit(session, tracker.RoomEntered(scope, from, room, before, opensNow, launching, end));
+                feed.Via = "WalkIn";
+                feed.Emit(game.At(self), tracker.RoomEntered(scope, from, room, before, opensNow, launching, end));
             }
 
             // the state changes during this frame's update, and a savestate
             // saved at the end of this frame times from the next frame: the
             // start reading is the one after it
             if (lastState == Player.StIntroJump && !launching) {
-                via = "LaunchEnded";
+                feed.Via = "LaunchEnded";
                 tracker.LaunchEnded(scope, room, after);
             }
 
             if (!lastControl && control) {
-                via = "ControlReturned";
+                feed.Via = "ControlReturned";
                 tracker.ControlReturned(room, after, AtStartSpawn(session, session.LevelData, player?.ExactPosition));
             }
         }
@@ -574,7 +527,7 @@ public static class RunWatcher {
         bool appeared = restarted
             ? control
             : watched && ((!lastControl && control) || (lastState == Player.StIntroJump && !launching));
-        bool disturbed = load is RoomLoad.Respawn or RoomLoad.Teleport or RoomLoad.Loader || teleported || !fedLastFrame;
+        bool disturbed = load is RoomLoad.Respawn or RoomLoad.Teleport or RoomLoad.Loader || teleported || !feed.FedLastFrame;
         (float X, float Y)? at = player == null ? null : (player.ExactPosition.X, player.ExactPosition.Y);
         // a restart that has control already appears where the frame began, so
         // a direction held into its first frame is a move
@@ -586,11 +539,11 @@ public static class RunWatcher {
         Saved.Moved = still.Moved;
 
         if (tasFrame) {
-            via = "Tas";
+            feed.Via = "Tas";
             tracker.TasPlayed();
         }
 
-        Saved.Stamp = ++stamp;
+        Saved.Stamp = ++feed.Stamp;
         // during 6A's watched fall the rooms passed through are not where the
         // run comes from: 00 is entered from start, as after either skip
         if (restarted || !watched || state != Player.StReflectionFall) {
@@ -602,9 +555,9 @@ public static class RunWatcher {
         lastControl = control;
         lastStopped = stopped;
         lastCompleted = completed;
-        afterEnding = ending;
-        chapterRestarted = false;
-        fedLastFrame = true;
+        feed.AfterEnding = ending;
+        feed.ChapterRestarted = false;
+        feed.FedLastFrame = true;
     }
 
     // a savestate further into the room does not play it: the point must be on
@@ -694,75 +647,22 @@ public static class RunWatcher {
     // holding that frame's tick; gated like a collect. An exit built with no
     // level as the scene (the debug keys) is none of srs's; Restart and the
     // golden restart are seen at Session.Restart; a chapter's end was fed
-    // when Completed turned true; an exit from the Epilogue 7A's credits end
-    // in would replace the leave still pending from 7A's end
+    // when Completed turned true
     private static void OnLevelExit(Level level, LevelExit exit, LevelExit.Mode mode, Session session, HiresSnow snow) {
-        if (level == null || mode is not (LevelExit.Mode.SaveAndQuit or LevelExit.Mode.GiveUp) || afterEnding
-            || !SrsModule.Settings.Enabled || saveLoadAction == null || !fedLastFrame || Saved.Stamp != stamp) {
+        if (level == null || mode is not (LevelExit.Mode.SaveAndQuit or LevelExit.Mode.GiveUp)) {
             return;
         }
 
-        // a Return to Map taken in the ending is the chapter's end that
-        // already pends: a second leave would cost the run its rows at the pick
-        if (mode == LevelExit.Mode.GiveUp && leave is { Kind: LeaveKind.ChapterEnd }) {
-            return;
-        }
-
-        via = "LevelExit";
-        FeedLeave(level, mode == LevelExit.Mode.SaveAndQuit ? LeaveKind.SaveAndQuit : LeaveKind.ReturnToMap);
+        feed.LevelExit(mode == LevelExit.Mode.SaveAndQuit, Switched, Saved.Stamp, game.At(level));
     }
 
-    // SomeSplitButtons' split buttons: Split when one lands, then Loading (the
-    // mod loads a level for it, on this frame) or Stayed (it loads nothing).
-    // Raised from its Level.Update hook or its list's update, so after this
-    // frame was fed or inside orig; chapter time stands still from Split to
-    // its outcome. Gated like a collect.
-    // A Save and Quit split is a leave only once it loads: one that stays
-    // closes nothing, but leaves what is open unsure of its note.
-    // A Return to Map split is one where it lands, list or
-    // not, unless a chapter's end pends, which it would replace
+    // SomeSplitButtons' split stages, raised from its Level.Update hook or its
+    // list's update, so after this frame was fed or inside orig; chapter time
+    // stands still from Split to its outcome
     private static void OnSplitStage(string action, string stage, ulong _) {
-        if (Engine.Scene is not Level level || afterEnding
-            || !SrsModule.Settings.Enabled || saveLoadAction == null || !fedLastFrame || Saved.Stamp != stamp) {
-            return;
+        if (Engine.Scene is Level level) {
+            feed.SplitStage(action, stage, Switched, Saved.Stamp, game.At(level));
         }
-
-        if (action == "SaveAndQuit" && stage == "Stayed") {
-            via = "SplitSaveAndQuitStayed";
-            tracker.SplitStayed();
-        } else if (action == "SaveAndQuit" && stage == "Loading") {
-            via = "SplitSaveAndQuitLoading";
-            FeedLeave(level, LeaveKind.SaveAndQuit);
-        } else if (action == "ReturnToMap" && stage == "Split" && leave == null) {
-            via = "SplitReturnToMap";
-            FeedLeave(level, LeaveKind.ReturnToMap, noLoadYet: true);
-        } else if (action == "ReturnToMap" && leave is { NoLoadYet: true }) {
-            if (stage == "Loading") {
-                leave = leave with { NoLoadYet = false };
-            } else if (stage == "Stayed") {
-                // no list, or one closed without a pick: no level was left,
-                // and what closed keeps its record, up until the next row closes
-                rows.KeepUntilNextRow();
-                leave = null;
-                via = "SplitReturnToMapStayed";
-                tracker.Drop();
-            }
-        }
-    }
-
-    // a leave read off the level as it stands
-    private static void FeedLeave(Level level, LeaveKind kind, bool noLoadYet = false) {
-        tracker.Rooms = RoomMap.For(level.Session);
-        FeedLeave(level.Session, kind, level.Session.Time, EndOf(level.Session, level.Tracker.GetEntity<Player>()),
-            noLoadYet);
-    }
-
-    // the serial is read before the leave closes anything: a re-entry keeps
-    // the records after it
-    private static void FeedLeave(Session session, LeaveKind kind, long reading, EndState end, bool noLoadYet = false) {
-        int serial = LatestSerial;
-        Emit(session, tracker.Left(kind, reading, end));
-        leave = new PendingLeave(kind, session.Area, session.Level, reading, serial, noLoadYet);
     }
 
     // whether this level from the loader carries on from the leave: the same
@@ -772,9 +672,8 @@ public static class RunWatcher {
     // or a chapter's end, a checkpoint's own spawn, the chapter's first room
     // excluded: entering at the chapter's start is a new attempt for everything.
     // A split whose mod announced no load was not left by this level
-    private static bool IsReentry(PendingLeave left, Session session, long reading) {
-        // != and not Equals: AreaKey.Equals(object) always returns false
-        if (left.Area != session.Area || left.NoLoadYet) {
+    private static bool IsReentry(FrameFeed.PendingLeave left, Session session, long reading) {
+        if (left.Area != (session.Area.ID, (int)session.Area.Mode) || left.NoLoadYet) {
             return false;
         }
 
@@ -788,11 +687,7 @@ public static class RunWatcher {
     }
 
     /// The master switch moved: a level left before it is not carried on from.
-    internal static void Forget() {
-        via = "SwitchMoved";
-        leave = null;
-        tracker.Drop();
-    }
+    internal static void Forget() => feed.Forget();
 
     // a berry still following when a row ends counts for it
     private static EndState EndOf(Session session, Player player) {
@@ -823,11 +718,7 @@ public static class RunWatcher {
     // was never fed. Goldens pass here too, and no row asks for them
     private static void OnBerryCollect(On.Celeste.Strawberry.orig_OnCollect orig, Strawberry self) {
         orig(self);
-        if (!SrsModule.Settings.Enabled || saveLoadAction == null || !fedLastFrame || Saved.Stamp != stamp) {
-            return;
-        }
-
-        tracker.BerryCollected(self.ID.Key);
+        feed.BerryCollected(self.ID.Key, Switched, Saved.Stamp);
     }
 
     private static void OnRegisterHeart(On.Celeste.HeartGem.orig_RegisterAsCollected orig, HeartGem self, Level level, string poemId) {
@@ -835,54 +726,44 @@ public static class RunWatcher {
         OnCollect(Collectibles.Heart);
     }
 
-    // collects land inside an update (entity updates) or between two; inside
-    // one, the frame's start reading, as for a room entry
+    // collects land inside an update (entity updates) or between two
     private static void OnCollect(Collectibles kind) {
-        if (!SrsModule.Settings.Enabled || saveLoadAction == null || !fedLastFrame || Saved.Stamp != stamp
-            || Engine.Scene is not Level level) {
-            return;
+        if (Engine.Scene is Level level) {
+            feed.Collected(kind, Switched, Saved.Stamp, game.At(level));
         }
-
-        tracker.Rooms = RoomMap.For(level.Session);
-        via = kind switch {
-            Collectibles.Heart => "Heart",
-            Collectibles.Cassette => "Cassette",
-            _ => "Gem",
-        };
-        long reading = inUpdate ? frameStart : level.Session.Time;
-        Emit(level.Session, tracker.Collected(kind, reading, EndOf(level.Session, level.Tracker.GetEntity<Player>())));
     }
+
+    // srs switched on, with Speed Run Tool's SaveLoad bound
+    private static bool Switched => SrsModule.Settings.Enabled && saveLoadAction != null;
 
     // a split of an older SomeSplitButtons reports nothing: no record can
     // vouch for its note, so none claims one
     private static bool NotesUnknown => SplitImports.InteropVersion != null && !observing;
 
-    private static void Emit(Session session, List<SegmentRecord> records) {
-        // a row closing while a TAS plays, a collect or a split between two
-        // frames included
-        if (records.Count == 0) {
-            return;
+    // the level being updated or left, one object for all of them
+    private static readonly LevelGame game = new();
+
+    private sealed class LevelGame : IFrameGame {
+        private Level level;
+
+        public LevelGame At(Level at) {
+            level = at;
+            return this;
         }
 
-        if (TasPlaying()) {
-            foreach (SegmentRecord record in records) {
-                WriteTrace(new TraceEvent(TraceKind.NotRecorded, record.Rule, TraceReason.TasPlayed, null, record));
-            }
-
-            return;
-        }
-
-        if (NotesUnknown) {
-            for (int i = 0; i < records.Count; i++) {
-                records[i] = records[i] with { Note = SaveAndQuitNote.Unknown, ReturnToMap = ReturnToMapNote.Unknown };
-            }
-        }
+        public IRoomMap Rooms => RoomMap.For(level.Session);
+        public string Room => level.Session.Level;
+        public (int Id, int Mode) Area => (level.Session.Area.ID, (int)level.Session.Area.Mode);
+        public long Time => level.Session.Time;
+        public EndState End() => EndOf(level.Session, level.Tracker.GetEntity<Player>());
+        public bool TasPlaying => RunWatcher.TasPlaying();
+        public bool NotesUnknown => RunWatcher.NotesUnknown;
 
         // the copy is all auto-export takes from the game thread
-        if (SessionBests.Record(records, session) && SrsModule.Settings.AutoExport) {
-            AutoExport.Offer([.. SessionBests.All], SegmentAutoDetect.ScopeOf(session));
+        public void Record(List<SegmentRecord> records) {
+            if (SessionBests.Record(records, level.Session) && SrsModule.Settings.AutoExport) {
+                AutoExport.Offer([.. SessionBests.All], SegmentAutoDetect.ScopeOf(level.Session));
+            }
         }
-
-        rows.Add(records, session.Level, tracker.Rooms.BerriesOf);
     }
 }

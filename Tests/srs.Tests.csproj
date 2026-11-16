@@ -45,6 +45,7 @@
         <Compile Include="../Source/Engine/Stillness.cs" Link="Source/Engine/Stillness.cs" />
         <Compile Include="../Source/Engine/FrameReading.cs" Link="Source/Engine/FrameReading.cs" />
         <Compile Include="../Source/Engine/AttemptRows.cs" Link="Source/Engine/AttemptRows.cs" />
+        <Compile Include="../Source/Engine/FrameFeed.cs" Link="Source/Engine/FrameFeed.cs" />
     </ItemGroup>
 
     <!-- snapshots of the tabs srs reads; refreshing them is how a change in
