@@ -787,6 +787,32 @@ public class FrameFeedTests {
         Assert.False(Feed(Plain()).TasFrame);
     }
 
+    // a TAS that stopped inside the update still played the frame: the row
+    // this frame closes is marked before it closes
+    [Fact]
+    public void ARowClosedOnTheFrameATasStoppedInIsNotRecorded() {
+        Add("Start RC", "1", null, EndKind.Restart);
+        Started();
+        feed.Tracker.Restart("1a", "1", 0, true, false, _ => true);
+        feed.Restarted(null, 250, (1, 0));
+        feed.LevelLoaded(true, false);
+
+        Assert.True(Feed(Plain() with { TasBefore = true }).TasFrame);
+
+        Assert.Empty(game.Recorded);
+        Assert.Contains(traced, e => e.Kind == TraceKind.Disqualified && e.Reason == TraceReason.TasPlayed);
+    }
+
+    [Fact]
+    public void ACollectIsInsideTheUpdateOnlyFromItsStartToItsDecision() {
+        StartRows();
+
+        feed.BeforeUpdate(Stamp, 100);
+        Assert.True(feed.InUpdate);
+        feed.Decide(Plain(), game);
+        Assert.False(feed.InUpdate);
+    }
+
     // ---------------------------------------------------------------- the feed and the savestate fields
 
     private SavedValues Whole(FrameReading reading) {

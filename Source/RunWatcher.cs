@@ -277,6 +277,7 @@ public static class RunWatcher {
             self.TimerStopped || self.Completed, self.Completed, self.InCredits,
             (session.Area.ID, (int)session.Area.Mode), EndOf(session, player), SavedNow(), TasPlaying());
         Write(feed.Frame(in reading, game.At(self)));
+        game.Forget();
     }
 
     private static void Write(SavedValues saved) {
@@ -380,6 +381,7 @@ public static class RunWatcher {
         }
 
         feed.LevelExit(mode == LevelExit.Mode.SaveAndQuit, Switched, Saved.Stamp, game.At(level));
+        game.Forget();
     }
 
     // SomeSplitButtons' split stages, raised from its Level.Update hook or its
@@ -388,6 +390,7 @@ public static class RunWatcher {
     private static void OnSplitStage(string action, string stage, ulong _) {
         if (Engine.Scene is Level level) {
             feed.SplitStage(action, stage, Switched, Saved.Stamp, game.At(level));
+            game.Forget();
         }
     }
 
@@ -435,6 +438,7 @@ public static class RunWatcher {
     private static void OnCollect(Collectibles kind) {
         if (Engine.Scene is Level level) {
             feed.Collected(kind, Switched, Saved.Stamp, game.At(level));
+            game.Forget();
         }
     }
 
@@ -476,6 +480,9 @@ public static class RunWatcher {
             level = at;
             return this;
         }
+
+        // no level is held from one frame to the next: every use names its own
+        public void Forget() => level = null;
 
         public Func<SegmentRule, bool> AtLoadedSpawn(float x, float y) =>
             AtStartSpawn(level.Session, dataBefore, new Vector2(x, y));
