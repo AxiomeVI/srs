@@ -28,7 +28,30 @@ internal interface IFrameGame {
 
     /// Keeps the session's bests, and offers them to auto-export.
     void Record(List<SegmentRecord> records);
+
+    /// Whether a point is on a start spawn of the rule, in a room as the
+    /// tracker asks. A savestate further into the room does not play it.
+    /// Built only where a frame tests one: each is a new delegate.
+    Func<SegmentRule, bool> AtLoadedSpawn(float x, float y);
+
+    /// The session's respawn point, in its room: where a loader, a
+    /// teleport or a death puts the player.
+    Func<SegmentRule, bool> AtRespawnPoint();
+
+    /// The player's position now.
+    Func<SegmentRule, bool> AtPlayer();
+
+    /// The respawn point is a checkpoint's own spawn, the chapter's first
+    /// room excluded: what a checkpoint picked on the map lands on.
+    bool AtCheckpointSpawnPastStartRoom();
+
+    /// Speed Run Tool's "freeze after load" is Off.
+    bool FreezeAfterLoadOff { get; }
 }
+
+/// What a frame's decisions left for the feed that follows them.
+internal readonly record struct FrameOutcome(bool Feeds, bool Restarted, bool Watched, bool Teleported, RoomLoad Load,
+    bool TasFrame, bool Ending);
 
 /// Feeds RunTracker with what the adapter read: the frames and the events
 /// between and inside them. Holds every never-saved piece of state; the
@@ -93,6 +116,211 @@ internal sealed class FrameFeed {
     // a room entry is (Session.Time already counts the frame by then)
     public bool InUpdate;
     public long FrameStart;
+
+    // the edges against the last fed frame
+    public string LastRoom;
+    public bool LastLaunching;
+    public bool LastFall;
+    public bool LastControl = true;
+    public bool LastStopped;
+    public bool LastCompleted;
+
+    // read before the game's update: a load, or a savestate made since the
+    // last fed frame
+    private bool loaded;
+    private bool saved;
+
+    // with Speed Run Tool's "freeze after load" Off, a player load counts the
+    // frame its own wipe ends on, which Session.Time does not. A TAS load
+    // starts no wipe, and restores the one its state was saved under
+    private static readonly long WipeEndFrame = TimeSpan.FromMilliseconds(17).Ticks;
+
+    /// Before the game's update of a fed frame: before is chapter time, the
+    /// reading a room entry is timed from.
+    public void BeforeUpdate(long savedStamp, long before) {
+        loaded = savedStamp != Stamp;
+        if (loaded) {
+            // a room loaded before the load belongs to the timeline it left
+            RoomLoad = RoomLoad.None;
+        }
+
+        // making a savestate is a new attempt too, as if it were loaded at once
+        saved = StateSaved && !loaded;
+        StateSaved = false;
+        FrameStart = before;
+        InUpdate = true;
+    }
+
+    /// After the game's update of a fed frame: what it means, first match
+    /// wins. Feeds nothing by itself but the restarts.
+    public FrameOutcome Frame(in FrameReading r, IFrameGame game) {
+        InUpdate = false;
+        // a row a TAS played one frame of is never recorded, whoever ends it:
+        // a TAS may hand control back mid-row (QuicksaveMod replays one from
+        // the room's start). Marked before this frame's closes, which Emit
+        // lets through once the TAS has stopped, and again last, so a row
+        // opened this frame is marked too
+        bool tasFrame = r.TasBefore || r.TasAfter;
+        if (tasFrame) {
+            Via = "Tas";
+            tracker.TasPlayed();
+        }
+
+        PlayerSide player = r.Player;
+        // the Epilogue counts as an ending only while the last level updated
+        // was one: AfterEnding is rewritten by a level update only, so one
+        // entered again after the credits stays transparent
+        bool ending = r.InCredits || (AfterEnding && r.Area.Id == 8);
+        tracker.Rooms = game.Rooms;
+        RoomLoad load = RoomLoad;
+        RoomLoad = RoomLoad.None;
+        // a room change no LoadLevel walked into is a teleport too. Not on a
+        // load: the state's room is not a room change
+        bool teleported = r.SavedAfter.Stamp == Stamp
+                          && (load == RoomLoad.Teleport
+                              || (FedLastFrame && r.Room != LastRoom && load < RoomLoad.WalkIn));
+
+        bool feeds = false;
+        // a new attempt landed this frame, so the player appears now if they
+        // have control
+        bool restarted = false;
+        // this frame's control and state edges are the player's own: not on a
+        // load inside orig, nor on the frame srs is switched back on
+        bool watched = true;
+        if (!loaded && r.SavedAfter.Stamp != Stamp) {
+            // a load inside orig: this frame's events would mix two timelines
+            Via = "LoadInFrame";
+            tracker.Drop();
+            Rows.Clear();
+            Leave = null;
+            watched = false;
+        } else if (loaded || saved) {
+            // every load is a new attempt. With control, the room's Current Room
+            // segment opens if the player has not moved since appearing on its
+            // start spawn; without, it waits for the appearance that follows.
+            // A save starts its wipe a frame later (a TAS's starts none, but
+            // a row a TAS plays is never recorded)
+            bool wipeEnd = (saved || r.LoadWiping) && game.FreezeAfterLoadOff;
+            Via = loaded ? "SavestateLoad" : "SavestateMade";
+            if (r.PlayerBefore.Control) {
+                tracker.Restart(r.Scope, r.RoomBefore, r.Before - (wipeEnd ? WipeEndFrame : 0), true,
+                    r.PlayerBefore.Launching,
+                    r.SavedBefore.Moved ? _ => false : game.AtLoadedSpawn(r.SavedBefore.SpawnX, r.SavedBefore.SpawnY),
+                    fromState: true);
+            } else {
+                tracker.RestartAtAppearance(r.Scope, r.RoomBefore);
+            }
+
+            Rows.Clear();
+            Leave = null;
+            // this frame's events start from the level the load left
+            LastRoom = r.RoomBefore;
+            LastLaunching = r.PlayerBefore.Launching;
+            LastFall = r.PlayerBefore.Fall;
+            LastControl = r.PlayerBefore.Control;
+            LastStopped = r.StoppedBefore;
+            LastCompleted = r.CompletedBefore;
+            feeds = r.Scope != null;
+        } else if (load == RoomLoad.Loader && ending) {
+            // the leave and what is set aside wait for the level entered after
+            // it. The rows shown do not: TierComparison dismisses them in the
+            // credits (not the room they closed in), and the serial that
+            // would bring them back has not moved
+        } else if (load == RoomLoad.Loader) {
+            // the spawn tested is the one the player appears at (an intro
+            // starts off screen). A checkpoint entered from chapter select
+            // counts without its wake-up
+            Func<SegmentRule, bool> atStart = game.AtRespawnPoint();
+            bool chapterLoad = !LoaderIntroRespawn;
+            PendingLeave left = Leave;
+            Leave = null;
+            bool reentry = left != null && IsReentry(left, in r, game);
+            if (!reentry) {
+                Rows.Clear();
+            }
+
+            if (ChapterRestarted && RestartedArea == r.Area) {
+                // the rows ending on Restart Chapter close first, on the old
+                // session's time; the restart then drops the rest unrecorded
+                Via = "RestartChapter";
+                Emit(game, tracker.ChapterRestarted(RestartedTime, r.End));
+            }
+
+            // a re-entry carries on from the reading before orig: chapter
+            // time counted before control comes back is the row's
+            if (reentry) {
+                // A Save and Quit and Continue always carries on: every row stays
+                Via = "Reentry";
+                bool carried = tracker.Reentered(left.Kind, r.Scope, r.Room, r.Before, player.Control, player.Launching,
+                    atStart, chapterLoad);
+                Rows.Reentered(carried, left.Serial, left.Kind == LeaveKind.SaveAndQuit, r.Room);
+            } else {
+                Via = "LevelLoad";
+                tracker.Restart(r.Scope, r.Room, r.Before, player.Control, player.Launching, atStart,
+                    chapterLoad: chapterLoad);
+            }
+
+            restarted = true;
+        } else if (teleported) {
+            // Speed Run Tool's room teleport skips rooms without lowering chapter
+            // time: a new attempt from the spawn it put the player on
+            Via = "Teleport";
+            tracker.Restart(r.Scope, r.Room, r.Before, player.Control, player.Launching, game.AtRespawnPoint());
+            Rows.Clear();
+            Leave = null;
+            restarted = true;
+        } else if (!FedLastFrame) {
+            // switched back on: whatever was open missed events
+            Via = "FeedingResumed";
+            tracker.Drop();
+            Rows.Clear();
+            watched = false;
+        } else if (r.After < r.Before) {
+            // Level.Reload zeroes chapter time on a death in the first room
+            // with nothing collected: a new attempt from the spawn, which
+            // without control waits for ControlReturned. Only that death
+            // lets a chapter row from the map keep the time read before it
+            Func<SegmentRule, bool> spawn = game.AtRespawnPoint();
+            bool firstRoomDeath = load == RoomLoad.Respawn && r.Room == LastRoom;
+            Via = firstRoomDeath ? "FirstRoomDeath" : "ClockReset";
+            // a chapter row kept through it keeps the rows of its pieces
+            bool kept = firstRoomDeath
+                        && tracker.ClockZeroed(r.Scope, r.Room, r.Before, r.After, player.Control, player.Launching, spawn);
+            if (!firstRoomDeath) {
+                tracker.Restart(r.Scope, r.Room, r.After, player.Control, player.Launching, spawn);
+            }
+
+            if (!kept) {
+                Rows.Clear();
+            }
+
+            Leave = null;
+            restarted = true;
+        } else {
+            feeds = r.Scope != null;
+        }
+
+        return new FrameOutcome(feeds, restarted, watched, teleported, load, tasFrame, ending);
+    }
+
+    // whether this level from the loader carries on from the leave: the same
+    // chapter and side, and after a Save and Quit the room that was left with
+    // chapter time where the leave read it (the saved session resumed;
+    // another file or a console load reads otherwise). After a Return to Map
+    // or a chapter's end, a checkpoint's own spawn, the chapter's first room
+    // excluded: entering at the chapter's start is a new attempt for everything.
+    // A split whose mod announced no load was not left by this level
+    private static bool IsReentry(PendingLeave left, in FrameReading r, IFrameGame game) {
+        if (left.Area != r.Area || left.NoLoadYet) {
+            return false;
+        }
+
+        if (left.Kind == LeaveKind.SaveAndQuit) {
+            return r.Room == left.Room && r.Before == left.Reading;
+        }
+
+        return game.AtCheckpointSpawnPastStartRoom();
+    }
 
     /// An event is fed only with srs on and Speed Run Tool's SaveLoad bound,
     /// once a frame was fed, and not between a load and its first frame.

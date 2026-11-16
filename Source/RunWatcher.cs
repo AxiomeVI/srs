@@ -28,11 +28,6 @@ public static class RunWatcher {
         Player.StTempleFall, Player.StIntroMoonJump, Player.StIntroThinkForABit,
     ];
 
-    // with Speed Run Tool's "freeze after load" Off, a player load counts the
-    // frame its own wipe ends on, which Session.Time does not. A TAS load
-    // starts no wipe, and restores the one its state was saved under
-    private static readonly long WipeEndFrame = TimeSpan.FromMilliseconds(17).Ticks;
-
     // every never-saved piece of state, the tracker and the rows above the timer
     private static readonly FrameFeed feed = new();
     private static RunTracker tracker => feed.Tracker;
@@ -56,13 +51,6 @@ public static class RunWatcher {
     // the wipe the last load restored with the level, before a player load
     // starts its own; read and cleared on the next frame
     private static ScreenWipe restoredWipe;
-    // never saved: the edges against the last fed frame
-    private static string lastRoom;
-    private static int lastState = -1;
-    private static bool lastControl = true;
-    private static bool lastStopped;
-    private static bool lastCompleted;
-
     // the berries following the player, rebuilt on every fed frame and read
     // inside it only
     private static readonly List<string> following = [];
@@ -288,196 +276,52 @@ public static class RunWatcher {
 
         // before orig: the reading a room entry is timed from, and the level
         // and Saved as a load left them, before this frame can move the player
-        bool loaded = Saved.Stamp != feed.Stamp;
-        if (loaded) {
-            // a room loaded before the load belongs to the timeline it left
-            feed.RoomLoad = RoomLoad.None;
-        }
-
-        // making a savestate is a new attempt too, as if it were loaded at once
-        bool saved = feed.StateSaved && !loaded;
-        feed.StateSaved = false;
-
         long before = self.Session.Time;
+        feed.BeforeUpdate(Saved.Stamp, before);
         Player playerBefore = self.Tracker.GetEntity<Player>();
-        LevelData dataBefore = self.Session.LevelData;
+        game.Begin(self);
         string roomBefore = self.Session.Level;
-        int stateBefore = playerBefore?.StateMachine.State ?? -1;
-        Vector2? exactBefore = playerBefore?.ExactPosition;
-        bool controlBefore = playerBefore != null && !self.InCutscene && !NoControlStates.Contains(stateBefore);
+        PlayerSide sideBefore = SideOf(self, playerBefore);
         bool stoppedBefore = self.TimerStopped || self.Completed;
         bool completedBefore = self.Completed;
-        // a player load's own wipe
         bool loadWiping = self.Wipe != null && self.Wipe != restoredWipe;
         restoredWipe = null;
-        string from = Saved.From;
-        bool movedAtLoad = Saved.Moved;
-        Vector2 spawnAtLoad = Saved.SpawnAt;
+        SavedValues savedBefore = SavedNow();
 
         FeedingIs(null);
         bool tasBefore = TasPlaying();
-        feed.FrameStart = before;
-        feed.InUpdate = true;
         orig(self);
         Hotkeys.Poll(self);
-        feed.InUpdate = false;
-
-        // a row a TAS played one frame of is never recorded, whoever ends it:
-        // a TAS may hand control back mid-row (QuicksaveMod replays one from
-        // the room's start). Marked before this frame's closes, which Emit
-        // lets through once the TAS has stopped, and again last, so a row
-        // opened this frame is marked too
-        bool tasFrame = tasBefore || TasPlaying();
-        if (tasFrame) {
-            feed.Via = "Tas";
-            tracker.TasPlayed();
-        }
 
         Session session = self.Session;
-        long after = session.Time;
-        string scope = SegmentAutoDetect.ScopeOf(session);
-        string room = session.Level;
         Player player = self.Tracker.GetEntity<Player>();
-        int state = player?.StateMachine.State ?? -1;
-        bool control = player != null && !self.InCutscene && !NoControlStates.Contains(state);
-        bool launching = state == Player.StIntroJump;
-        bool stopped = self.TimerStopped || self.Completed;
-        bool completed = self.Completed;
-        // the Epilogue counts as an ending only while the last level updated
-        // was one: afterEnding is rewritten by a level update only, so one
-        // entered again after the credits stays transparent
-        bool ending = self.InCredits || (feed.AfterEnding && session.Area.ID == 8);
-        tracker.Rooms = RoomMap.For(session);
-        EndState end = EndOf(session, player);
-        RoomLoad load = feed.RoomLoad;
-        feed.RoomLoad = RoomLoad.None;
-        // a room change no LoadLevel walked into is a teleport too. Not on a
-        // load: the state's room is not a room change
-        bool teleported = Saved.Stamp == feed.Stamp
-                          && (load == RoomLoad.Teleport
-                              || (feed.FedLastFrame && room != lastRoom && load < RoomLoad.WalkIn));
-
-        bool feeds = false;
-        // a new attempt landed this frame, so the player appears now if they
-        // have control
-        bool restarted = false;
-        // this frame's control and state edges are the player's own: not on a
-        // load inside orig, nor on the frame srs is switched back on
-        bool watched = true;
-        if (!loaded && Saved.Stamp != feed.Stamp) {
-            // a load inside orig: this frame's events would mix two timelines
-            feed.Via = "LoadInFrame";
-            tracker.Drop();
-            feed.Rows.Clear();
-            feed.Leave = null;
-            watched = false;
-        } else if (loaded || saved) {
-            // every load is a new attempt. With control, the room's Current Room
-            // segment opens if the player has not moved since appearing on its
-            // start spawn; without, it waits for the appearance that follows.
-            // A save starts its wipe a frame later (a TAS's starts none, but
-            // a row a TAS plays is never recorded)
-            bool wipeEnd = (saved || loadWiping)
-                           && SpeedrunToolSettings.Instance?.FreezeAfterLoadStateType == FreezeAfterLoadStateType.Off;
-            feed.Via = loaded ? "SavestateLoad" : "SavestateMade";
-            if (controlBefore) {
-                tracker.Restart(scope, roomBefore, before - (wipeEnd ? WipeEndFrame : 0), true,
-                    stateBefore == Player.StIntroJump,
-                    movedAtLoad ? _ => false : AtStartSpawn(session, dataBefore, spawnAtLoad), fromState: true);
-            } else {
-                tracker.RestartAtAppearance(scope, roomBefore);
-            }
-
-            feed.Rows.Clear();
-            feed.Leave = null;
-            // this frame's events start from the level the load left
-            lastRoom = roomBefore;
-            lastState = stateBefore;
-            lastControl = controlBefore;
-            lastStopped = stoppedBefore;
-            lastCompleted = completedBefore;
-            feeds = scope != null;
-        } else if (load == RoomLoad.Loader && ending) {
-            // the leave and what is set aside wait for the level entered after
-            // it. The rows shown do not: TierComparison dismisses them in the
-            // credits (not the room they closed in), and the serial that
-            // would bring them back has not moved
-        } else if (load == RoomLoad.Loader) {
-            // the spawn tested is the one the player appears at (an intro
-            // starts off screen). A checkpoint entered from chapter select
-            // counts without its wake-up
-            Func<SegmentRule, bool> atStart = AtStartSpawn(session, session.LevelData, session.RespawnPoint);
-            bool chapterLoad = !feed.LoaderIntroRespawn;
-            FrameFeed.PendingLeave left = feed.Leave;
-            feed.Leave = null;
-            bool reentry = left != null && IsReentry(left, session, before);
-            if (!reentry) {
-                feed.Rows.Clear();
-            }
-
-            if (feed.ChapterRestarted && feed.RestartedArea == (session.Area.ID, (int)session.Area.Mode)) {
-                // the rows ending on Restart Chapter close first, on the old
-                // session's time; the restart then drops the rest unrecorded
-                feed.Via = "RestartChapter";
-                feed.Emit(game.At(self), tracker.ChapterRestarted(feed.RestartedTime, end));
-            }
-
-            // a re-entry carries on from the reading before orig: chapter
-            // time counted before control comes back is the row's
-            if (reentry) {
-                // A Save and Quit and Continue always carries on: every row stays
-                feed.Via = "Reentry";
-                bool carried = tracker.Reentered(left.Kind, scope, room, before, control, launching, atStart,
-                    chapterLoad);
-                feed.Rows.Reentered(carried, left.Serial, left.Kind == LeaveKind.SaveAndQuit, room);
-            } else {
-                feed.Via = "LevelLoad";
-                tracker.Restart(scope, room, before, control, launching, atStart, chapterLoad: chapterLoad);
-            }
-
-            restarted = true;
-        } else if (teleported) {
-            // Speed Run Tool's room teleport skips rooms without lowering chapter
-            // time: a new attempt from the spawn it put the player on
-            feed.Via = "Teleport";
-            tracker.Restart(scope, room, before, control, launching,
-                AtStartSpawn(session, session.LevelData, session.RespawnPoint));
-            feed.Rows.Clear();
-            feed.Leave = null;
-            restarted = true;
-        } else if (!feed.FedLastFrame) {
-            // switched back on: whatever was open missed events
-            feed.Via = "FeedingResumed";
-            tracker.Drop();
-            feed.Rows.Clear();
-            watched = false;
-        } else if (after < before) {
-            // Level.Reload zeroes chapter time on a death in the first room
-            // with nothing collected: a new attempt from the spawn, which
-            // without control waits for ControlReturned. Only that death
-            // lets a chapter row from the map keep the time read before it
-            Func<SegmentRule, bool> spawn = AtStartSpawn(session, session.LevelData, session.RespawnPoint);
-            bool firstRoomDeath = load == RoomLoad.Respawn && room == lastRoom;
-            feed.Via = firstRoomDeath ? "FirstRoomDeath" : "ClockReset";
-            // a chapter row kept through it keeps the rows of its pieces
-            bool kept = firstRoomDeath && tracker.ClockZeroed(scope, room, before, after, control, launching, spawn);
-            if (!firstRoomDeath) {
-                tracker.Restart(scope, room, after, control, launching, spawn);
-            }
-
-            if (!kept) {
-                feed.Rows.Clear();
-            }
-
-            feed.Leave = null;
-            restarted = true;
-        } else {
-            feeds = scope != null;
-        }
+        PlayerSide side = SideOf(self, player);
+        FrameReading reading = new(before, roomBefore, sideBefore, stoppedBefore, completedBefore, loadWiping,
+            savedBefore, tasBefore,
+            session.Time, session.Level, SegmentAutoDetect.ScopeOf(session), side,
+            self.TimerStopped || self.Completed, self.Completed, self.InCredits,
+            (session.Area.ID, (int)session.Area.Mode), EndOf(session, player), SavedNow(), TasPlaying());
+        FrameOutcome outcome = feed.Frame(in reading, game.At(self));
+        long after = reading.After;
+        string scope = reading.Scope;
+        string room = reading.Room;
+        string from = savedBefore.From;
+        bool control = side.Control;
+        bool launching = side.Launching;
+        bool stopped = reading.Stopped;
+        bool completed = reading.Completed;
+        bool ending = outcome.Ending;
+        EndState end = reading.End;
+        RoomLoad load = outcome.Load;
+        bool feeds = outcome.Feeds;
+        bool restarted = outcome.Restarted;
+        bool watched = outcome.Watched;
+        bool teleported = outcome.Teleported;
+        bool tasFrame = outcome.TasFrame;
 
         // the credits set Completed again and change room: neither is the run's
         if (feeds && !ending) {
-            if (state == Player.StReflectionFall && lastState != Player.StReflectionFall) {
+            if (side.Fall && !feed.LastFall) {
                 // 6A's watched fall is not a run of 6a Start: disqualified, not
                 // dropped, so it still closes in Lake's start room and Lake
                 // opens there
@@ -493,16 +337,16 @@ public static class RunWatcher {
             // Completed turning true is the chapter's end, and a leave: fed
             // once, here, so the exit that follows adds nothing. TimerStopped
             // alone closes and is no leave: every LoadLevel resets it
-            if (completed && !lastCompleted) {
+            if (completed && !feed.LastCompleted) {
                 feed.Via = "ChapterEnd";
                 feed.FeedLeave(game.At(self), LeaveKind.ChapterEnd, after, end);
-            } else if (stopped && !lastStopped) {
+            } else if (stopped && !feed.LastStopped) {
                 feed.Via = "TimerStopped";
                 feed.Emit(game.At(self), tracker.ChapterTimeStopped(after, end));
             }
 
-            if (room != lastRoom && load == RoomLoad.WalkIn) {
-                bool opensNow = control || (player != null && !ArrivalStates.Contains(state));
+            if (room != feed.LastRoom && load == RoomLoad.WalkIn) {
+                bool opensNow = control || (side.Present && !side.Arriving);
                 feed.Via = "WalkIn";
                 feed.Emit(game.At(self), tracker.RoomEntered(scope, from, room, before, opensNow, launching, end));
             }
@@ -510,14 +354,14 @@ public static class RunWatcher {
             // the state changes during this frame's update, and a savestate
             // saved at the end of this frame times from the next frame: the
             // start reading is the one after it
-            if (lastState == Player.StIntroJump && !launching) {
+            if (feed.LastLaunching && !launching) {
                 feed.Via = "LaunchEnded";
                 tracker.LaunchEnded(scope, room, after);
             }
 
-            if (!lastControl && control) {
+            if (!feed.LastControl && control) {
                 feed.Via = "ControlReturned";
-                tracker.ControlReturned(room, after, AtStartSpawn(session, session.LevelData, player?.ExactPosition));
+                tracker.ControlReturned(room, after, game.AtPlayer());
             }
         }
 
@@ -526,12 +370,12 @@ public static class RunWatcher {
         // the last appearance
         bool appeared = restarted
             ? control
-            : watched && ((!lastControl && control) || (lastState == Player.StIntroJump && !launching));
+            : watched && ((!feed.LastControl && control) || (feed.LastLaunching && !launching));
         bool disturbed = load is RoomLoad.Respawn or RoomLoad.Teleport or RoomLoad.Loader || teleported || !feed.FedLastFrame;
-        (float X, float Y)? at = player == null ? null : (player.ExactPosition.X, player.ExactPosition.Y);
+        (float X, float Y)? at = side.Present ? (side.X, side.Y) : null;
         // a restart that has control already appears where the frame began, so
         // a direction held into its first frame is a move
-        (float X, float Y)? appearedAt = restarted && control && exactBefore is { } start ? (start.X, start.Y) : at;
+        (float X, float Y)? appearedAt = restarted && control && sideBefore.Present ? (sideBefore.X, sideBefore.Y) : at;
         Stillness still = new Stillness(Saved.SpawnAt.X, Saved.SpawnAt.Y, Saved.Moved)
             .After(disturbed, appeared, appearedAt)
             .After(false, false, at);
@@ -546,15 +390,16 @@ public static class RunWatcher {
         Saved.Stamp = ++feed.Stamp;
         // during 6A's watched fall the rooms passed through are not where the
         // run comes from: 00 is entered from start, as after either skip
-        if (restarted || !watched || state != Player.StReflectionFall) {
+        if (restarted || !watched || !side.Fall) {
             Saved.From = room;
         }
 
-        lastRoom = room;
-        lastState = state;
-        lastControl = control;
-        lastStopped = stopped;
-        lastCompleted = completed;
+        feed.LastRoom = room;
+        feed.LastLaunching = launching;
+        feed.LastFall = side.Fall;
+        feed.LastControl = control;
+        feed.LastStopped = stopped;
+        feed.LastCompleted = completed;
         feed.AfterEnding = ending;
         feed.ChapterRestarted = false;
         feed.FedLastFrame = true;
@@ -665,27 +510,6 @@ public static class RunWatcher {
         }
     }
 
-    // whether this level from the loader carries on from the leave: the same
-    // chapter and side, and after a Save and Quit the room that was left with
-    // chapter time where the leave read it (the saved session resumed;
-    // another file or a console load reads otherwise). After a Return to Map
-    // or a chapter's end, a checkpoint's own spawn, the chapter's first room
-    // excluded: entering at the chapter's start is a new attempt for everything.
-    // A split whose mod announced no load was not left by this level
-    private static bool IsReentry(FrameFeed.PendingLeave left, Session session, long reading) {
-        if (left.Area != (session.Area.ID, (int)session.Area.Mode) || left.NoLoadYet) {
-            return false;
-        }
-
-        if (left.Kind == LeaveKind.SaveAndQuit) {
-            return session.Level == left.Room && reading == left.Reading;
-        }
-
-        return session.Level != session.MapData?.StartLevel()?.Name
-               && session.RespawnPoint is { } at && session.LevelData is { } data
-               && CheckpointSpawn(data) is { } spawn && Near(at, spawn);
-    }
-
     /// The master switch moved: a level left before it is not carried on from.
     internal static void Forget() => feed.Forget();
 
@@ -740,16 +564,56 @@ public static class RunWatcher {
     // vouch for its note, so none claims one
     private static bool NotesUnknown => SplitImports.InteropVersion != null && !observing;
 
+    // the player reduced to what the decisions test
+    private static PlayerSide SideOf(Level level, Player player) {
+        if (player == null) {
+            return default;
+        }
+
+        int state = player.StateMachine.State;
+        return new PlayerSide(true, !level.InCutscene && !NoControlStates.Contains(state), state == Player.StIntroJump,
+            state == Player.StReflectionFall, ArrivalStates.Contains(state), player.ExactPosition.X,
+            player.ExactPosition.Y);
+    }
+
+    private static SavedValues SavedNow() => new(Saved.Stamp, Saved.From, Saved.SpawnAt.X, Saved.SpawnAt.Y, Saved.Moved);
+
     // the level being updated or left, one object for all of them
     private static readonly LevelGame game = new();
 
     private sealed class LevelGame : IFrameGame {
         private Level level;
+        // the room's data before the update, where a savestate left the player
+        private LevelData dataBefore;
+
+        public void Begin(Level at) {
+            level = at;
+            dataBefore = at.Session.LevelData;
+        }
 
         public LevelGame At(Level at) {
             level = at;
             return this;
         }
+
+        public Func<SegmentRule, bool> AtLoadedSpawn(float x, float y) =>
+            AtStartSpawn(level.Session, dataBefore, new Vector2(x, y));
+
+        public Func<SegmentRule, bool> AtRespawnPoint() =>
+            AtStartSpawn(level.Session, level.Session.LevelData, level.Session.RespawnPoint);
+
+        public Func<SegmentRule, bool> AtPlayer() =>
+            AtStartSpawn(level.Session, level.Session.LevelData, level.Tracker.GetEntity<Player>()?.ExactPosition);
+
+        public bool AtCheckpointSpawnPastStartRoom() {
+            Session session = level.Session;
+            return session.Level != session.MapData?.StartLevel()?.Name
+                   && session.RespawnPoint is { } at && session.LevelData is { } data
+                   && CheckpointSpawn(data) is { } spawn && Near(at, spawn);
+        }
+
+        public bool FreezeAfterLoadOff =>
+            SpeedrunToolSettings.Instance?.FreezeAfterLoadStateType == FreezeAfterLoadStateType.Off;
 
         public IRoomMap Rooms => RoomMap.For(level.Session);
         public string Room => level.Session.Level;
