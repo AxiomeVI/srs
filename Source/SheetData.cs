@@ -23,6 +23,11 @@ public class SheetData {
     /// the maintainer learns the sheet changed.
     public readonly List<(StandardsTab Tab, string[] Missing, string[] Extra)> ColumnDifferences = [];
 
+    /// The column names a block's header carries more than once, per tab and
+    /// block. Times are read from the first such column; the later ones take
+    /// the same time.
+    public readonly List<(StandardsTab Tab, string[] Names)> DuplicateColumns = [];
+
     public int SegmentCount => Block?.Segments.Count ?? 0;
 
     /// The tier a time reaches: the first column, in sheet order, whose
@@ -71,7 +76,6 @@ public class SheetData {
         SheetData data = new();
         SheetBlock merged = null;
         HashSet<(StandardsTab, string, string)> imported = [];
-        HashSet<StandardsTab> compared = [];
 
         foreach (StandardsTabInfo tab in StandardsTabs.All) {
             if (!csvByTab.TryGetValue(tab.Tab, out string csv) || string.IsNullOrWhiteSpace(csv)) {
@@ -85,7 +89,13 @@ public class SheetData {
                     data.Block = merged;
                 }
 
-                if (compared.Add(tab.Tab) && !raw.Columns.SequenceEqual(merged.Columns)) {
+                string[] repeated = raw.Columns.GroupBy(column => column)
+                    .Where(group => group.Count() > 1).Select(group => group.Key).ToArray();
+                if (repeated.Length > 0) {
+                    data.DuplicateColumns.Add((tab.Tab, repeated));
+                }
+
+                if (!raw.Columns.SequenceEqual(merged.Columns)) {
                     data.ColumnDifferences.Add((tab.Tab,
                         merged.Columns.Except(raw.Columns).ToArray(),
                         raw.Columns.Except(merged.Columns).ToArray()));

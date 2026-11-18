@@ -94,8 +94,39 @@ public class ParseTabsTests {
         Assert.Equal(System.TimeSpan.FromSeconds(40), row.Times[3]);
     }
 
+    // a later block of a tab is compared too, not only the first
+    [Fact]
+    public void ALaterBlockWithDifferentColumnsIsReported() {
+        SheetData data = SheetData.Parse(new Dictionary<StandardsTab, string> {
+            [StandardsTab.CSides] = Header + "1c,0,17,20,30\n\nChapter,Hidden,WR,Pink\n2c,0,17,40\n",
+        });
+
+        (StandardsTab tab, string[] missing, string[] extra) = Assert.Single(data.ColumnDifferences);
+        Assert.Equal(StandardsTab.CSides, tab);
+        Assert.Equal(["Gold"], missing);
+        Assert.Empty(extra);
+        Assert.Equal(System.TimeSpan.FromSeconds(40), data.Block.Find("2c", "2c").Times[3]);
+    }
+
+    // a repeated column name is reported; the first column's times are read
+    [Fact]
+    public void ARepeatedColumnNameIsReported() {
+        SheetData data = SheetData.Parse(new Dictionary<StandardsTab, string> {
+            [StandardsTab.CSides] = "Chapter,Hidden,WR,Gold,Gold,Pink\n1c,0,17,20,25,40\n",
+        });
+
+        (StandardsTab tab, string[] names) = Assert.Single(data.DuplicateColumns);
+        Assert.Equal(StandardsTab.CSides, tab);
+        Assert.Equal(["Gold"], names);
+        Assert.Empty(data.ColumnDifferences);
+        SheetSegment row = data.Block.Find("1c", "1c");
+        Assert.Equal(System.TimeSpan.FromSeconds(20), row.Times[2]);
+        Assert.Equal(System.TimeSpan.FromSeconds(20), row.Times[3]);
+    }
+
     [Fact]
     public void TheFixturesReportNoColumnDifference() {
         Assert.Empty(Fixtures.Parsed.ColumnDifferences);
+        Assert.Empty(Fixtures.Parsed.DuplicateColumns);
     }
 }

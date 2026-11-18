@@ -216,6 +216,12 @@ public static class SheetImporter {
                 $"The {StandardsTabs.Of(tab).LogName} tab's columns differ from the first tab's: "
                 + $"missing [{string.Join(", ", missing)}], extra [{string.Join(", ", extra)}]");
         }
+
+        foreach ((StandardsTab tab, string[] names) in data.DuplicateColumns) {
+            Logger.Log(LogLevel.Warn, LogTag,
+                $"The {StandardsTabs.Of(tab).LogName} tab repeats a column name: [{string.Join(", ", names)}]; "
+                + "the first column's times are used");
+        }
     }
 
     private static async Task<string> DownloadTab(string sheetUrl, string label) {
