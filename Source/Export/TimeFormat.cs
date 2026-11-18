@@ -33,16 +33,16 @@ public static class TimeFormat {
     /// frame to the millisecond.
     public const long FrameTicks = 17 * TimeSpan.TicksPerMillisecond;
 
-    // under this, a difference reads in frames
-    private const long FramesBelow = TimeSpan.TicksPerSecond / 10;
+    // up to this, a difference reads in frames: 0.1 s itself is 6f
+    private const long FramesUpTo = TimeSpan.TicksPerSecond / 10;
 
-    /// A signed difference: "+1.250", "-1:13.500", "-1:04:47.491", and under
+    /// A signed difference: "+1.250", "-1:13.500", "-1:04:47.491", and up to
     /// 0.1 s in frames, "-3f". A sheet time typed by hand need not be a whole
     /// number of frames: it rounds to the nearest, and to 1f rather than 0f.
     public static string Delta(long ticks) {
         string sign = ticks < 0 ? "-" : "+";
         long size = Math.Abs(ticks);
-        if (size >= FramesBelow) {
+        if (size > FramesUpTo) {
             return sign + FromTicks(size);
         }
 
@@ -51,8 +51,8 @@ public static class TimeFormat {
     }
 
     /// How far a time is behind a threshold it must be strictly under, as
-    /// Delta writes it; under 0.1 s, the frames to save: a tie needs one, and
+    /// Delta writes it; up to 0.1 s, the frames to save: a tie needs one, and
     /// 34 ms behind needs three, since two would tie.
     public static string Behind(long ticks) =>
-        ticks is >= 0 and < FramesBelow ? $"+{ticks / FrameTicks + 1}f" : Delta(ticks);
+        ticks is >= 0 and <= FramesUpTo ? $"+{ticks / FrameTicks + 1}f" : Delta(ticks);
 }

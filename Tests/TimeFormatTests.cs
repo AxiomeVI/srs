@@ -36,18 +36,21 @@ public class TimeFormatTests {
     [InlineData(-0.051, "-3f")]
     [InlineData(0.017, "+1f")]
     [InlineData(-0.085, "-5f")]
+    // 0.1 s itself, from a hand-typed time, is the nearest frame
+    [InlineData(0.1, "+6f")]
+    [InlineData(-0.1, "-6f")]
     [InlineData(0, "+0f")]
     // a hand-typed sheet time: the nearest frame, never 0f for a difference
     [InlineData(-0.025, "-1f")]
     [InlineData(0.026, "+2f")]
     [InlineData(-0.003, "-1f")]
-    public void UnderATenthADeltaIsInFrames(double seconds, string shown) {
+    public void UpToATenthADeltaIsInFrames(double seconds, string shown) {
         Assert.Equal(shown, TimeFormat.Delta(TimeSpan.FromSeconds(seconds).Ticks));
     }
 
     [Fact]
-    public void FromATenthADeltaIsATime() {
-        long ticks = TimeSpan.FromSeconds(0.1).Ticks;
+    public void PastATenthADeltaIsATime() {
+        long ticks = TimeSpan.FromSeconds(0.1).Ticks + 1;
 
         Assert.Equal("-" + TimeFormat.FromTicks(ticks), TimeFormat.Delta(-ticks));
         Assert.Equal("+" + TimeFormat.FromTicks(ticks), TimeFormat.Behind(ticks));
@@ -60,6 +63,7 @@ public class TimeFormatTests {
     [InlineData(0.017, "+2f")]
     [InlineData(0.034, "+3f")]
     [InlineData(0.099, "+6f")]
+    [InlineData(0.1, "+6f")]
     public void BehindAThresholdCountsTheFramesToSave(double seconds, string shown) {
         Assert.Equal(shown, TimeFormat.Behind(TimeSpan.FromSeconds(seconds).Ticks));
     }
