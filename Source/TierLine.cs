@@ -27,7 +27,7 @@ internal static class TierLine {
         TimeSpan ranked = shown + TimeSpan.FromTicks(offset);
         string tier = SheetData.TierOf(columns, thresholds, ranked);
         string gap = SheetData.NextTier(columns, thresholds, tier) is { } next
-            ? $"{TimeFormat.Delta(ranked.Ticks - next.Threshold.Ticks)} to {next.Column}"
+            ? $"{TimeFormat.Behind(ranked.Ticks - next.Threshold.Ticks)} to {next.Column}"
             : null;
         return new TierRows(shownText, tier, pb, gap);
     }

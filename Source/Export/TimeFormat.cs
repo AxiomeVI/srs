@@ -29,8 +29,30 @@ public static class TimeFormat {
              + span.ToString("\\:mm\\:ss\\.fff", CultureInfo.InvariantCulture);
     }
 
-    /// A signed difference, written as a time: "+1.250", "-1:13.500",
-    /// "-1:04:47.491".
-    public static string Delta(long ticks) =>
-        (ticks < 0 ? "-" : "+") + FromTicks(Math.Abs(ticks));
+    /// Chapter time moves by 17 ms a frame, not 1/60 s: the game rounds each
+    /// frame to the millisecond.
+    public const long FrameTicks = 17 * TimeSpan.TicksPerMillisecond;
+
+    // under this, a difference reads in frames
+    private const long FramesBelow = TimeSpan.TicksPerSecond / 10;
+
+    /// A signed difference: "+1.250", "-1:13.500", "-1:04:47.491", and under
+    /// 0.1 s in frames, "-3f". A sheet time typed by hand need not be a whole
+    /// number of frames: it rounds to the nearest, and to 1f rather than 0f.
+    public static string Delta(long ticks) {
+        string sign = ticks < 0 ? "-" : "+";
+        long size = Math.Abs(ticks);
+        if (size >= FramesBelow) {
+            return sign + FromTicks(size);
+        }
+
+        long frames = (size + FrameTicks / 2) / FrameTicks;
+        return $"{sign}{(size > 0 ? Math.Max(frames, 1) : 0)}f";
+    }
+
+    /// How far a time is behind a threshold it must be strictly under, as
+    /// Delta writes it; under 0.1 s, the frames to save: a tie needs one, and
+    /// 34 ms behind needs three, since two would tie.
+    public static string Behind(long ticks) =>
+        ticks is >= 0 and < FramesBelow ? $"+{ticks / FrameTicks + 1}f" : Delta(ticks);
 }
