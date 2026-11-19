@@ -42,7 +42,13 @@ public class TierLineTests {
         TierRows rows = Build(45);
 
         Assert.Equal("Pink", rows.Tier);
-        Assert.EndsWith(" to Gold", rows.Gap);
+        Assert.Equal("+1f to Gold", rows.Gap);
+    }
+
+    // a gain under a tenth reads in frames
+    [Fact]
+    public void ASmallPBGainIsInFrames() {
+        Assert.Equal("PB -3f", Build(47.949, 48).Pb);
     }
 
     [Theory]
@@ -73,7 +79,7 @@ public class TierLineTests {
         TierRows moved = TierLine.Build(Columns, Thresholds, T(44), T(45), rankOffsetTicks: T(3));
 
         Assert.Equal("Gold", plain.Tier);
-        Assert.Equal(("Pink", $"{TimeFormat.Delta(T(2))} to Gold"), (moved.Tier, moved.Gap));
+        Assert.Equal(("Pink", $"{TimeFormat.Behind(T(2))} to Gold"), (moved.Tier, moved.Gap));
         Assert.Equal((plain.Time, plain.Pb), (moved.Time, moved.Pb));
         Assert.NotNull(moved.Pb);
     }
