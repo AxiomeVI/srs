@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v4.5.0 — 2026-11-21
 
 - **A difference of 0.1 s or less reads in frames.** The PB gain and the gap to the next tier above the timer, and the delta on the export screen, show `-3f` instead of `-0.051`, a frame being the 17 ms chapter time moves by. The gap counts the frames you must save, so a tie with the threshold reads `+1f`. 0.1 s itself reads `+6f`; past it, differences read as times, as before.
 - **A Save and Quit and Continue always keeps the rows above the timer.** Whatever was running at the Save and Quit, the rows shown stay up through the reload, and the segments that close after it are added to them, so Cycle Shown Segment steps back through all of them. That holds during a wake-up (the segment that closed as you walked into it, such as 5B's `Central Chamber` or 2A's `Intervention`, stays), after a run that had already finished, and during 6A's watched fall. They were cleared when nothing still able to record was running at the Save and Quit. Recorded times, notes and the export do not change.
