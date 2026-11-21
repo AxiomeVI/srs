@@ -1,7 +1,5 @@
 using System;
 using System.IO;
-using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using FMOD.Studio;
 
@@ -18,8 +16,11 @@ public class SrsModule : EverestModule {
     }
 
     public override void Load() {
-        // before anything formats a time
-        AdoptSpeedrunToolsTimeFormat();
+        // first: before anything formats a time, and on a miss before anything
+        // is installed, so Unload and the menu have nothing to undo or reach
+        if (!SpeedrunToolMatch.Adopt()) {
+            return;
+        }
 
         SheetImporter.Load();
         // before ExportMenu.Load, which asks the sheet at launch
@@ -48,55 +49,35 @@ public class SrsModule : EverestModule {
             Run = action => Task.Run(action),
         });
         SheetReader.LoadCopy();
-        // Level.Update hook order: each Load wraps the previous ones, so after
-        // orig the frame runs in Load order. Hotkeys polls the input before
-        // anything reads it, RunWatcher feeds the tracker, TierComparison reads
-        // its latest record, ExportMenu reads its hotkey last
         Hotkeys.Load();
         RunWatcher.Load();
         TierComparison.Load();
-        // last: it reads Hotkeys on the frame Hotkeys updated it, and only reads
-        // what the others produced
         ExportMenu.Load();
+        On.Celeste.Level.Update += LevelOnUpdate;
+    }
+
+    // The one Level.Update hook, so the frame's order is this method and not
+    // the order of Load calls. RunWatcher.Update runs first and polls Hotkeys
+    // right after orig; the rest read that poll's Pressed, TierComparison
+    // before ExportMenu. No closure over orig: it would allocate every frame.
+    private static void LevelOnUpdate(On.Celeste.Level.orig_Update orig, Level self) {
+        RunWatcher.Update(orig, self);
+        TierComparison.Update(self);
+        ExportMenu.Update(self);
     }
 
     public override void Unload() {
+        if (SpeedrunToolMatch.Missing != null) {
+            return;
+        }
+
+        On.Celeste.Level.Update -= LevelOnUpdate;
         // a reloaded module leaves these statics behind: nothing of theirs may send
         AutoExport.Drop();
         ExportMenu.Unload();
         TierComparison.Unload();
         RunWatcher.Unload();
-        Hotkeys.Unload();
         SheetImporter.Unload();
-    }
-
-    /// Takes Speed Run Tool's formatter rather than copying it. By reflection,
-    /// the only way in: RoomTimerData.FormatTime is public, its class is not,
-    /// the ModInterop does not export it, and srs's own code reads public members
-    /// only. isPbTime false: true returns "" for a zero, Speed Run Tool's absent PB.
-    private static void AdoptSpeedrunToolsTimeFormat() {
-        try {
-            Assembly assembly = Everest.Modules
-                .FirstOrDefault(module => module.Metadata?.Name == "SpeedrunTool")?
-                .GetType().Assembly;
-            MethodInfo method = assembly?
-                .GetType("Celeste.Mod.SpeedrunTool.RoomTimer.RoomTimerData")?
-                .GetMethod("FormatTime", BindingFlags.Public | BindingFlags.Static,
-                    null, [typeof(long), typeof(bool)], null);
-
-            if (method?.CreateDelegate(typeof(Func<long, bool, string>)) is Func<long, bool, string> format) {
-                TimeFormat.Format = ticks => format(ticks, false);
-                return;
-            }
-        } catch (Exception e) {
-            Logger.Log(LogLevel.Error, "srs", "could not reach SpeedrunTool's time format: " + e);
-        }
-
-        // fatal on purpose: a second formatter would drift in silence and write
-        // a time into the player's sheet that no longer matches the timer
-        throw new InvalidOperationException(
-            "SpeedrunTool's RoomTimerData.FormatTime could not be found. It is where srs takes its"
-            + " time format from, and srs keeps no copy. This needs a srs update.");
     }
 
     public override void LoadSettings() {
@@ -145,6 +126,14 @@ public class SrsModule : EverestModule {
     // added before it land in the previous mod's section
     public override void CreateModMenuSection(TextMenu menu, bool inGame, EventInstance snapshot) {
         CreateModMenuSectionHeader(menu, inGame, snapshot);
+        // Load installed nothing: no entry may reach what it would have set up
+        if (SpeedrunToolMatch.Missing != null) {
+            menu.Add(new TextMenuExt.SubHeaderExt(Dialog.Clean("MODOPTIONS_SRS_SPEEDRUNTOOL_MISMATCH")) {
+                TextColor = ExportUrlMenu.ErrorColor,
+            });
+            return;
+        }
+
         ModMenu.CreateMenu(menu, inGame);
     }
 }

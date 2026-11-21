@@ -47,6 +47,14 @@ public class MalformedInputTests {
         Assert.Null(singular.Times[2]);
     }
 
+    // a header needs Hidden followed by WR; Hidden alone opens no block
+    [Fact]
+    public void AHiddenColumnNotFollowedByWROpensNoBlock() {
+        SheetData data = Fixtures.Parse("Chapter,Checkpoint,Hidden,Gold,Pink\n1a CP,1a Start,0:00.000,10,20", null);
+
+        Assert.Equal(0, data.SegmentCount);
+    }
+
     [Fact]
     public void TurnsBrokenFormulaCellsIntoNullThresholds() {
         SheetData data = Fixtures.Parse(Header + "1a CP,1a Start,0:00.000,#REF!,#REF!", null);

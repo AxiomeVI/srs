@@ -221,7 +221,7 @@ internal static class ExportMenu {
     private static Screen screen;
 
     // the Level the screen is open on, and whether it was paused before Open()
-    // forced it. ⚠️ A Level is normally never held across frames: OnLevelUpdate
+    // forced it. ⚠️ A Level is normally never held across frames: Update
     // closes the screen when this one is replaced under it
     private static Level openLevel;
     private static bool pausedBeforeOpen;
@@ -244,7 +244,7 @@ internal static class ExportMenu {
     // how stale a fresh answer has to be before opening the screen asks again
     private static readonly TimeSpan AskAgainAfter = TimeSpan.FromSeconds(60);
 
-    // what a worker hands the game thread, drained in OnLevelUpdate: a TextMenu
+    // what a worker hands the game thread, drained in Update: a TextMenu
     // is never touched off it. Each action reads the screen as it is when it runs
     private static readonly ConcurrentQueue<Action> gameThread = new();
 
@@ -260,21 +260,16 @@ internal static class ExportMenu {
         // before it, when Dialog.Clean throws: the key is logged instead
         ExportProtocol.Localize = key => Dialog.Language == null ? key : Dialog.Clean(key);
 
-        On.Celeste.Level.Update += OnLevelUpdate;
-
         // about a second of the round trip is Google's dispatch whatever the
         // script does; starting here is what opens the screen on data
         SheetReader.Refresh("launch");
     }
 
     public static void Unload() {
-        On.Celeste.Level.Update -= OnLevelUpdate;
         Close();
     }
 
-    private static void OnLevelUpdate(On.Celeste.Level.orig_Update orig, Level self) {
-        orig(self);
-
+    internal static void Update(Level self) {
         // held back under a wipe, which would cover the popup; taken with the
         // mod off, so a count is dropped then
         int failed = self.Wipe == null || !SrsModule.Settings.Enabled ? AutoExport.TakeFailed() : 0;

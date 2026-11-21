@@ -1,3 +1,4 @@
+#nullable disable
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -108,8 +109,6 @@ internal static class Bindable {
             if (!typeof(ButtonBinding).IsAssignableFrom(property.PropertyType)) continue;
             if (property.GetValue(settings) is not ButtonBinding binding) continue;
 
-            binding.Keys ??= new List<Keys>();
-            binding.Buttons ??= new List<Buttons>();
             removed += binding.Keys.RemoveAll(key => key == Keys.None);
         }
         return removed;

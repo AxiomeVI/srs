@@ -1,9 +1,11 @@
+#nullable disable
 using System;
 using System.Collections.Generic;
+using Monocle;
 
 namespace Celeste.Mod.CelesteHotkeys;
 
-/// <summary>A mod's hotkeys, polled together once per frame.</summary>
+/// <summary>A mod's hotkeys, polled together, the first poll of each frame counting.</summary>
 // Owns the per-frame order, which every hotkey of every mod must follow the same way:
 //   1. one input snapshot, so every hotkey answers the same frame;
 //   2. if paused, every hotkey tracks what is held and none fires;
@@ -32,12 +34,23 @@ internal sealed class HotkeySet<TSettings> where TSettings : class {
 
     internal IReadOnlyList<Keybind<TSettings>> Keybinds => keybinds;
 
-    /// <summary>Polls every hotkey. Call once per frame, then query <see cref="Pressed"/>.</summary>
+    /// <summary>
+    ///     Polls every hotkey, then query <see cref="Pressed"/>. The first poll of a frame counts: a
+    ///     later call in the same frame returns at once, whatever <paramref name="enabled"/> says.
+    /// </summary>
     /// <param name="enabled">
     ///     The mod's master switch. Off counts as paused rather than as "not polled", so a combo held
     ///     while the mod is switched back on does not fire.
     /// </param>
-    internal void Update(bool enabled = true) => Update(HotkeyInput.Current(), !enabled || HotkeyPause.Now);
+    internal void Update(bool enabled = true) {
+        // A second poll would see no edge and erase every press of the first.
+        ulong frame = Engine.FrameCounter;
+        if (polledFrame == frame) return;
+        polledFrame = frame;
+        Update(HotkeyInput.Current(), !enabled || HotkeyPause.Now);
+    }
+
+    private ulong? polledFrame;
 
     // ⚠️ Frames after a pause that still count as paused. MInput blanks the keyboard while the console
     // is open and the window unfocused, and it decides that in MInput.Update, BEFORE the console

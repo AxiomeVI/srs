@@ -42,7 +42,13 @@ public class TierLineTests {
         TierRows rows = Build(45);
 
         Assert.Equal("Pink", rows.Tier);
-        Assert.EndsWith(" to Gold", rows.Gap);
+        Assert.Equal("+1f to Gold", rows.Gap);
+    }
+
+    // a gain under a tenth reads in frames
+    [Fact]
+    public void ASmallPBGainIsInFrames() {
+        Assert.Equal("PB -3f", Build(47.949, 48).Pb);
     }
 
     [Theory]
@@ -73,7 +79,7 @@ public class TierLineTests {
         TierRows moved = TierLine.Build(Columns, Thresholds, T(44), T(45), rankOffsetTicks: T(3));
 
         Assert.Equal("Gold", plain.Tier);
-        Assert.Equal(("Pink", $"{TimeFormat.Delta(T(2))} to Gold"), (moved.Tier, moved.Gap));
+        Assert.Equal(("Pink", $"{TimeFormat.Behind(T(2))} to Gold"), (moved.Tier, moved.Gap));
         Assert.Equal((plain.Time, plain.Pb), (moved.Time, moved.Pb));
         Assert.NotNull(moved.Pb);
     }
@@ -103,10 +109,10 @@ public class TierLineTests {
         RemoteRow with = new() { RankOffset = 2.5 };
         RemoteRow without = new();
 
-        Assert.Equal(["1a/ARB IL", "1a/FC IL"], SegmentRules.All.Where(TierLine.StandardInFileTime)
+        Assert.Equal(["1a/ARB IL", "1a/FC IL"], SegmentRules.All.Where(rule => rule.StandardInFileTime)
             .Select(rule => $"{rule.Scope}/{rule.Name}"));
         foreach (SegmentRule rule in SegmentRules.All) {
-            if (TierLine.StandardInFileTime(rule)) {
+            if (rule.StandardInFileTime) {
                 Assert.Equal(T(2.5), TierLine.RankOffsetTicks(rule, with));
                 // an older script, or a sheet never read
                 Assert.Null(TierLine.RankOffsetTicks(rule, without));
@@ -116,6 +122,10 @@ public class TierLineTests {
                 Assert.Equal(0, TierLine.RankOffsetTicks(rule, null));
             }
         }
+
+        // the trait decides, not the route or the chapter
+        SegmentRule arbIl = SegmentRules.All.Single(r => r.Scope == "1a" && r.Name == "ARB IL");
+        Assert.Equal(0, TierLine.RankOffsetTicks(arbIl with { StandardInFileTime = false }, with));
     }
 
     [Theory]

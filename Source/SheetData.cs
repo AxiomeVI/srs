@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
@@ -14,6 +15,18 @@ public class SheetData {
     /// renamed gets noticed. Covers only what was given: the rows of a tab left
     /// out of the parse are all here.
     public readonly List<(string SheetChapter, string Label)> MissingRows = [];
+
+    /// The tabs whose columns are not the merged block's, with what differs:
+    /// a column the block has and the tab lacks, and one the tab has and the
+    /// block lacks. The times are matched by column name, so a difference
+    /// costs the missing column its time and drops the extra one; this is how
+    /// the maintainer learns the sheet changed.
+    public readonly List<(StandardsTab Tab, string[] Missing, string[] Extra)> ColumnDifferences = [];
+
+    /// The column names a block's header carries more than once, per tab and
+    /// block. Times are read from the first such column; the later ones take
+    /// the same time.
+    public readonly List<(StandardsTab Tab, string[] Names)> DuplicateColumns = [];
 
     public int SegmentCount => Block?.Segments.Count ?? 0;
 
@@ -76,11 +89,23 @@ public class SheetData {
                     data.Block = merged;
                 }
 
+                string[] repeated = raw.Columns.GroupBy(column => column)
+                    .Where(group => group.Count() > 1).Select(group => group.Key).ToArray();
+                if (repeated.Length > 0) {
+                    data.DuplicateColumns.Add((tab.Tab, repeated));
+                }
+
+                if (!raw.Columns.SequenceEqual(merged.Columns)) {
+                    data.ColumnDifferences.Add((tab.Tab,
+                        merged.Columns.Except(raw.Columns).ToArray(),
+                        raw.Columns.Except(merged.Columns).ToArray()));
+                }
+
                 foreach (SheetSegment segment in raw.Segments) {
                     if (SheetRows.TryRead(tab.Tab, segment.Chapter, segment.Name, out SheetRow row)) {
                         imported.Add((tab.Tab, segment.Chapter, segment.Name));
                         merged.Segments.Add(new SheetSegment(row.Scope, row.Name,
-                            Realigned(segment.Times, merged.Columns.Count)));
+                            Realigned(segment.Times, raw.Columns, merged.Columns)));
                     }
                 }
             }
@@ -95,12 +120,15 @@ public class SheetData {
         return data;
     }
 
-    // one segment's times, padded or cut to the merged block's columns: Times
-    // must stay indexable by Columns, whatever the width of the row's own tab
-    private static List<TimeSpan?> Realigned(List<TimeSpan?> times, int columns) {
-        List<TimeSpan?> aligned = new(columns);
-        for (int i = 0; i < columns; i++) {
-            aligned.Add(i < times.Count ? times[i] : null);
+    // one segment's times under the merged block's columns, matched by name:
+    // Times must stay indexable by Columns, whatever the columns of the row's
+    // own tab; a column the tab lacks is null
+    private static List<TimeSpan?> Realigned(
+        List<TimeSpan?> times, List<string> own, List<string> merged) {
+        List<TimeSpan?> aligned = new(merged.Count);
+        foreach (string column in merged) {
+            int index = own.IndexOf(column);
+            aligned.Add(index >= 0 ? times[index] : null);
         }
 
         return aligned;
@@ -130,6 +158,7 @@ public class SheetData {
                     string label = row[i].Trim();
                     if (label.Length > 0) {
                         currentBlock.Columns.Add(label);
+                        currentBlock.CellOfColumn.Add(i);
                     }
                 }
 
@@ -153,8 +182,8 @@ public class SheetData {
             }
 
             SheetSegment segment = new(implicitChapter ?? currentChapter, name);
-            for (int i = currentBlock.TierStart; i < currentBlock.TierStart + currentBlock.Columns.Count; i++) {
-                segment.Times.Add(i < row.Length ? TryParseTime(row[i]) : null);
+            foreach (int cell in currentBlock.CellOfColumn) {
+                segment.Times.Add(cell < row.Length ? TryParseTime(row[cell]) : null);
             }
 
             currentBlock.Segments.Add(segment);
@@ -236,6 +265,9 @@ public class SheetBlock(int tierStart, bool hasCheckpoints) {
     // false when each segment is a whole chapter ("Chapter Times" blocks)
     public readonly bool HasCheckpoints = hasCheckpoints;
     public readonly List<string> Columns = [];
+    // the cell each column's label sits in, which is where its times are read:
+    // a blank label cell between two tiers does not shift the rest
+    public readonly List<int> CellOfColumn = [];
     public readonly List<SheetSegment> Segments = [];
 
     /// The segment of that chapter and name, or null. Callers address segments

@@ -18,8 +18,14 @@ public static class SheetImporter {
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
 
-    public static SheetData Data { get; private set; }
-    public static DateTime? CacheTime { get; private set; }
+    // published together, in one assignment: a reader on the game thread
+    // never sees one half of an update
+    private sealed record Held(SheetData Data, DateTime? CacheTime);
+
+    private static volatile Held held = new(null, null);
+
+    public static SheetData Data => held.Data;
+    public static DateTime? CacheTime => held.CacheTime;
 
     // the download in flight, shared by the startup refresh and the menu
     // button: pressing the button during the startup one joins it instead of
@@ -52,12 +58,12 @@ public static class SheetImporter {
 
             SheetData data = SheetData.Parse(cached);
             if (data.SegmentCount > 0) {
-                Data = data;
-                CacheTime = LatestCacheTime();
+                held = new Held(data, LatestCacheTime());
                 Logger.Log(LogLevel.Info, LogTag, $"Loaded {data.SegmentCount} segments from cache ({CachePaths})");
                 // here too, not only after a download: offline, the cache is
                 // all a player ever runs on
                 LogMissingRows(data, "the cached sheet");
+                LogColumnDifferences(data);
             } else {
                 Logger.Log(LogLevel.Warn, LogTag, $"Cache files have no usable segments ({CachePaths})");
             }
@@ -74,8 +80,7 @@ public static class SheetImporter {
     }
 
     public static void Unload() {
-        Data = null;
-        CacheTime = null;
+        held = new Held(null, null);
         updateFailed = false;
     }
 
@@ -183,11 +188,11 @@ public static class SheetImporter {
 
             // before the caches: a file that cannot be written must not cost
             // the session what was just downloaded
-            Data = data;
-            CacheTime = DateTime.Now;
+            held = new Held(data, DateTime.Now);
             WriteCaches(tabs.Select(CachePathOf).ToArray(), csvs);
             Logger.Log(LogLevel.Info, LogTag, $"Sheet updated: {data.SegmentCount} segments");
             LogMissingRows(data, "the sheet");
+            LogColumnDifferences(data);
             return true;
         } catch (Exception e) {
             Logger.Log(LogLevel.Warn, LogTag, $"Sheet update failed: {e}");
@@ -202,6 +207,20 @@ public static class SheetImporter {
             Logger.Log(LogLevel.Warn, LogTag,
                 $"{data.MissingRows.Count} imported row(s) not in {where}: "
                 + string.Join(", ", data.MissingRows.Select(row => $"{row.SheetChapter} / {row.Label}")));
+        }
+    }
+
+    private static void LogColumnDifferences(SheetData data) {
+        foreach ((StandardsTab tab, string[] missing, string[] extra) in data.ColumnDifferences) {
+            Logger.Log(LogLevel.Warn, LogTag,
+                $"The {StandardsTabs.Of(tab).LogName} tab's columns differ from the first tab's: "
+                + $"missing [{string.Join(", ", missing)}], extra [{string.Join(", ", extra)}]");
+        }
+
+        foreach ((StandardsTab tab, string[] names) in data.DuplicateColumns) {
+            Logger.Log(LogLevel.Warn, LogTag,
+                $"The {StandardsTabs.Of(tab).LogName} tab repeats a column name: [{string.Join(", ", names)}]; "
+                + "the first column's times are used");
         }
     }
 
@@ -237,14 +256,21 @@ public static class SheetImporter {
         try {
             for (int i = 0; i < paths.Length; i++) {
                 Directory.CreateDirectory(Path.GetDirectoryName(paths[i]));
-                File.WriteAllText(paths[i] + ".tmp", csvs[i]);
+                File.WriteAllText(AtomicFile.TempOf(paths[i]), csvs[i]);
             }
 
             foreach (string path in paths) {
-                File.Move(path + ".tmp", path, overwrite: true);
+                File.Move(AtomicFile.TempOf(path), path, overwrite: true);
             }
         } catch (Exception e) {
             Logger.Log(LogLevel.Warn, LogTag, $"Could not cache the sheet: {e.GetType().Name}: {e.Message}");
+            foreach (string path in paths) {
+                try {
+                    File.Delete(AtomicFile.TempOf(path));
+                } catch (Exception) {
+                    // best effort: the next write replaces it
+                }
+            }
         }
     }
 

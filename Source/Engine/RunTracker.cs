@@ -110,9 +110,39 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// For the tests.
     public IEnumerable<SegmentRule> Open => open.Select(segment => segment.Rule);
 
+    /// Told every change to a row, inside the call that made it; null when
+    /// nobody listens. Nothing is reported while a row merely stays open.
+    public Action<TraceEvent> Trace { get; set; }
+
+    private void Report(TraceKind kind, SegmentRule rule, TraceReason reason, long? reading,
+        SegmentRecord? record = null, string room = null, string from = null, string entry = null) =>
+        Trace?.Invoke(new TraceEvent(kind, rule, reason, reading, record, room, from, entry));
+
+    private void ReportPending(TraceReason reason, long? reading) {
+        foreach ((SegmentRule rule, _, _) in pending) {
+            Report(TraceKind.StoppedWaiting, rule, reason, reading, room: pendingRoom);
+        }
+    }
+
+    private static TraceReason ReasonOf(LeaveKind kind) => kind switch {
+        LeaveKind.SaveAndQuit => TraceReason.SaveAndQuit,
+        LeaveKind.ReturnToMap => TraceReason.ReturnToMap,
+        _ => TraceReason.ChapterEnd,
+    };
+
     /// The timeline changed under the open segments: nothing open or set
     /// aside is recorded.
-    public void Drop() {
+    public void Drop() => Drop(TraceReason.TimelineChanged, null);
+
+    private void Drop(TraceReason reason, long? reading) {
+        if (Trace != null) {
+            foreach (OpenSegment segment in open.Concat(aside)) {
+                Report(TraceKind.Dropped, segment.Rule, reason, reading);
+            }
+
+            ReportPending(reason, reading);
+        }
+
         open.Clear();
         aside.Clear();
         pending.Clear();
@@ -125,9 +155,10 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// For a stretch the run did not play (6A's watched fall).
     public void Disqualify() {
         foreach (OpenSegment segment in open) {
-            segment.Disqualified = true;
+            Disqualify(segment, TraceReason.Fall);
         }
 
+        ReportPending(TraceReason.Fall, null);
         pending.Clear();
         pendingRoom = null;
     }
@@ -138,7 +169,15 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// if the TAS is still playing.
     public void TasPlayed() {
         foreach (OpenSegment segment in open.Concat(aside)) {
+            Disqualify(segment, TraceReason.TasPlayed);
+        }
+    }
+
+    // reported once, not on every frame a TAS plays
+    private void Disqualify(OpenSegment segment, TraceReason reason) {
+        if (!segment.Disqualified) {
             segment.Disqualified = true;
+            Report(TraceKind.Disqualified, segment.Rule, reason, null);
         }
     }
 
@@ -148,7 +187,10 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// still waiting for control.
     public void SplitStayed() {
         foreach (OpenSegment segment in open) {
-            segment.Unsure = true;
+            if (!segment.Unsure) {
+                segment.Unsure = true;
+                Report(TraceKind.Unsure, segment.Rule, TraceReason.SplitStayed, null);
+            }
         }
 
         for (int i = 0; i < pending.Count; i++) {
@@ -168,11 +210,11 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// What it opens counts as opened by neither a walk-in nor a Save and Quit.
     public void Restart(string scope, string room, long reading, bool control, bool launching,
         Func<SegmentRule, bool> atStart, bool fromState = false, bool chapterLoad = false) {
-        Drop();
+        Drop(TraceReason.NewAttempt, reading);
         OpenAt(scope, room, reading, control, launching, standalone: true,
             rule => rule.Setup != StartSetup.NextRoom && (fromState || rule.Setup != StartSetup.HeartRespawn)
                     && (chapterLoad || rule.Setup != StartSetup.ChapterLoad) && atStart(rule),
-            fromLoad: false, Opening.Other);
+            fromLoad: false, Opening.Other, TraceReason.Restart);
     }
 
     /// A savestate loaded without control (mid-wake-up, mid-respawn, mid-intro):
@@ -180,9 +222,10 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// heart-respawn segments starting in this room wait for the player to
     /// appear, where ControlReturned tests them.
     public void RestartAtAppearance(string scope, string room) {
-        Drop();
+        Drop(TraceReason.NewAttempt, null);
         OpenAt(scope, room, 0, control: false, launching: false, standalone: true,
-            rule => rule.Setup is not (StartSetup.NextRoom or StartSetup.ChapterLoad), fromLoad: true, Opening.Other);
+            rule => rule.Setup is not (StartSetup.NextRoom or StartSetup.ChapterLoad), fromLoad: true, Opening.Other,
+            TraceReason.Appearance);
     }
 
     /// The player walked into this room from another. Closes first, then opens:
@@ -209,7 +252,9 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             foreach (SegmentRule rule in rules) {
                 if (rule.Scope == scope && Rooms.StartRoomOf(rule) == from && Rooms.EntryRoomOf(rule) == room) {
                     backedOut.Add(rule);
-                    open.RemoveAll(segment => segment.Rule == rule);
+                    if (open.RemoveAll(segment => segment.Rule == rule) > 0) {
+                        Report(TraceKind.Dropped, rule, TraceReason.BackedOut, reading, room: room, from: from);
+                    }
                 }
             }
         }
@@ -220,22 +265,50 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             // one that may still return to the map goes on the first time, unless it is met here
             segment => atItsEnd(segment) && (!segment.Rule.MayReturnToMap || segment.Peeked
                                              || (fromItsEntry(segment) && Met(segment, reading, end) != null)),
-            reading, end, records: segment => !segment.Peeked && fromItsEntry(segment));
+            reading, end,
+            refuses: segment => segment.Peeked ? (TraceReason.PassedEndBefore, null)
+                : !fromItsEntry(segment) ? (TraceReason.NotFromNextEntry, SuccessorEntryOf(segment.Rule, scope, room))
+                : (TraceReason.None, null),
+            room, from);
         foreach (OpenSegment segment in open) {
-            segment.Peeked |= atItsEnd(segment);
+            if (!segment.Peeked && atItsEnd(segment)) {
+                segment.Peeked = true;
+                Report(TraceKind.PassedEnd, segment.Rule, TraceReason.None, reading, room: room, from: from);
+            }
         }
 
         CloseWhere(segment => segment.Rule.End == EndKind.Restart && Rooms.EndRoomOf(segment.Rule) == room,
-            reading, end, records: _ => false);
+            reading, end, refuses: _ => (TraceReason.EndRoomWalkedInto, null), room, from);
+        ReportPending(TraceReason.LeftRoom, reading);
         pending.Clear();
         pendingRoom = null;
         if (entry) {
             OpenAt(scope, room, reading, control, launching, standalone: false,
                 rule => rule.OpensOnWalkIn && Rooms.EntryRoomOf(rule) == from && !backedOut.Contains(rule),
-                fromLoad: false, Opening.WalkIn);
+                fromLoad: false, Opening.WalkIn, TraceReason.WalkIn, from);
+        }
+
+        if (Trace != null) {
+            ReportNotOpened(scope, from, room, reading);
         }
 
         return records;
+    }
+
+    // the rows starting in this room that a walk-in opens, but not this one
+    private void ReportNotOpened(string scope, string from, string room, long reading) {
+        foreach (SegmentRule rule in rules) {
+            if (rule.Scope != scope || !rule.OpensOnWalkIn || Rooms.StartRoomOf(rule) != room
+                || Rooms.EntryRoomOf(rule) is not { } entry) {
+                continue;
+            }
+
+            if (backedOut.Contains(rule)) {
+                Report(TraceKind.NotOpened, rule, TraceReason.BackedOut, reading, room: room, from: from, entry: entry);
+            } else if (entry != from) {
+                Report(TraceKind.NotOpened, rule, TraceReason.WrongEntry, reading, room: room, from: from, entry: entry);
+            }
+        }
     }
 
     // a segment starting in this room is entered from that one
@@ -279,11 +352,13 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// One a savestate load left waiting opens only where atAppearance says
     /// the player appeared at its start.
     public void ControlReturned(string room, long reading, Func<SegmentRule, bool> atAppearance) {
-        if (pendingRoom == room) {
-            foreach ((SegmentRule rule, bool fromLoad, Opening opening) in pending) {
-                if (!fromLoad || atAppearance(rule)) {
-                    OpenIfClosed(rule, reading, opening);
-                }
+        foreach ((SegmentRule rule, bool fromLoad, Opening opening) in pending) {
+            if (pendingRoom != room) {
+                Report(TraceKind.StoppedWaiting, rule, TraceReason.ControlElsewhere, reading, room: room);
+            } else if (!fromLoad || atAppearance(rule)) {
+                OpenIfClosed(rule, reading, opening, TraceReason.ControlReturned, room);
+            } else {
+                Report(TraceKind.StoppedWaiting, rule, TraceReason.NotAtStart, reading, room: room);
             }
         }
 
@@ -295,7 +370,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     public void LaunchEnded(string scope, string room, long reading) {
         foreach (SegmentRule rule in rules) {
             if (rule.Scope == scope && rule.Start == StartKind.AfterLaunch && Rooms.StartRoomOf(rule) == room) {
-                OpenIfClosed(rule, reading, Opening.WalkIn);
+                OpenIfClosed(rule, reading, Opening.WalkIn, TraceReason.LaunchEnded, room);
             }
         }
     }
@@ -340,6 +415,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// segments that span one. It then
     /// closes what ends there and drops the rest, unrecorded.
     public List<SegmentRecord> Left(LeaveKind kind, long reading, EndState end) {
+        ReportPending(TraceReason.LeftLevel, reading);
         pending.Clear();
         pendingRoom = null;
         // the attempt ends, unless a Save and Quit resumes it
@@ -366,6 +442,9 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
                 if (!aTry || segment.Lacked != Lacks(segment)) {
                     segment.Banked += reading - segment.Start;
                     aside.Add(segment);
+                    Report(TraceKind.SetAside, segment.Rule, ReasonOf(kind), reading);
+                } else {
+                    Report(TraceKind.Dropped, segment.Rule, TraceReason.TryFetchedNothing, reading);
                 }
             } else {
                 i++;
@@ -379,6 +458,12 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
                            || segment.Rule.MayReturnToMap, reading, end),
             _ => [],
         };
+        if (Trace != null) {
+            foreach (OpenSegment segment in open) {
+                Report(TraceKind.Dropped, segment.Rule, TraceReason.LeftLevel, reading);
+            }
+        }
+
         open.Clear();
         return records;
     }
@@ -393,32 +478,36 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// open where atStart says the player is at their start, as on a
     /// Restart, and after a Save and Quit the Heart Respawn ones too; the
     /// Chapter Load ones when the load played the chapter's intro. One
-    /// carried on is not opened again. True when the run goes on: after a
-    /// Save and Quit, anything that can still record carried on; from the
-    /// map, a segment that already holds something it requires (one that
-    /// holds nothing is a twin the run never played for).
+    /// carried on is not opened again. True when the run goes on: always
+    /// after a Save and Quit, whatever it set aside; from the map, a segment
+    /// that already holds something it requires (one that holds nothing is a
+    /// twin the run never played for).
     public bool Reentered(LeaveKind kind, string scope, string room, long reading, bool control, bool launching,
         Func<SegmentRule, bool> atStart, bool chapterLoad = false) {
         open.Clear();
         pending.Clear();
         pendingRoom = null;
-        bool carried = false;
+        bool carried = kind == LeaveKind.SaveAndQuit;
         foreach (OpenSegment segment in aside) {
             if (kind != LeaveKind.SaveAndQuit) {
                 bool carriesOn = segment.Rule.SpansReturnToMap
                     ? Rooms.StartRoomOf(segment.Rule) == room
                     : segment.Entered.Contains(room);
                 if (!carriesOn) {
+                    Report(TraceKind.NotCarriedOn, segment.Rule,
+                        segment.Rule.SpansReturnToMap ? TraceReason.NotItsCheckpoint : TraceReason.RoomNotWalked,
+                        reading, room: room);
                     continue;
                 }
 
                 segment.Lacked = Lacks(segment);
+                carried |= segment.Lacked < Needs(segment.Rule);
             }
 
             segment.Start = reading;
             segment.Resumed |= kind == LeaveKind.SaveAndQuit;
             open.Add(segment);
-            carried |= kind == LeaveKind.SaveAndQuit ? !segment.Disqualified : segment.Lacked < Needs(segment.Rule);
+            Report(TraceKind.CarriedOn, segment.Rule, ReasonOf(kind), reading, room: room);
         }
 
         aside.Clear();
@@ -426,7 +515,7 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             rule => rule.Setup != StartSetup.NextRoom
                     && (kind == LeaveKind.SaveAndQuit || rule.Setup != StartSetup.HeartRespawn)
                     && (chapterLoad || rule.Setup != StartSetup.ChapterLoad) && atStart(rule),
-            fromLoad: false, kind == LeaveKind.SaveAndQuit ? Opening.SaveAndQuit : Opening.Other);
+            fromLoad: false, kind == LeaveKind.SaveAndQuit ? Opening.SaveAndQuit : Opening.Other, TraceReason.Reentry);
         return carried;
     }
 
@@ -442,8 +531,11 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         foreach (OpenSegment segment in kept) {
             segment.Banked += last - segment.Start;
             segment.Start = reading;
+            Report(TraceKind.Kept, segment.Rule, TraceReason.FirstRoomDeath, reading, room: room);
         }
 
+        // out of the restart's drop, which would report them dropped
+        open.RemoveAll(kept.Contains);
         Restart(scope, room, reading, control, launching, atStart);
         open.InsertRange(0, kept);
         return kept.Count > 0;
@@ -454,12 +546,12 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     /// unrecorded. The new level's Restart then opens what starts there.
     public List<SegmentRecord> ChapterRestarted(long reading, EndState end) {
         List<SegmentRecord> records = CloseWhere(segment => segment.Rule.End == EndKind.Restart, reading, end);
-        Drop();
+        Drop(TraceReason.RestartChapter, reading);
         return records;
     }
 
     private void OpenAt(string scope, string room, long reading, bool control, bool launching, bool standalone,
-        Func<SegmentRule, bool> opens, bool fromLoad, Opening opening) {
+        Func<SegmentRule, bool> opens, bool fromLoad, Opening opening, TraceReason how, string from = null) {
         foreach (SegmentRule rule in rules) {
             if (rule.Scope != scope || Rooms.StartRoomOf(rule) != room || !opens(rule)) {
                 continue;
@@ -469,24 +561,26 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
                 // the launch's own end opens it (LaunchEnded); a load after the
                 // landing opens it here
                 if (standalone && control && !launching) {
-                    OpenIfClosed(rule, reading, opening);
+                    OpenIfClosed(rule, reading, opening, how, room, from);
                 }
 
                 continue;
             }
 
             if (control) {
-                OpenIfClosed(rule, reading, opening);
+                OpenIfClosed(rule, reading, opening, how, room, from);
             } else {
                 pending.Add((rule, fromLoad, opening));
                 pendingRoom = room;
+                Report(TraceKind.Waiting, rule, how, fromLoad ? null : reading, room: room, from: from);
             }
         }
     }
 
     // a segment already open stays open: a route looping through its start
     // room would lose the loop
-    private void OpenIfClosed(SegmentRule rule, long reading, Opening opening) {
+    private void OpenIfClosed(SegmentRule rule, long reading, Opening opening, TraceReason how, string room,
+        string from = null) {
         foreach (OpenSegment segment in open) {
             if (segment.Rule == rule) {
                 return;
@@ -494,12 +588,14 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
         }
 
         open.Add(new OpenSegment(rule, reading, opening));
+        Report(TraceKind.Opened, rule, how, reading, room: room, from: from);
     }
 
-    // records null: every segment that ends now may be recorded; else only
-    // those it accepts, and the others are dropped
+    // refuses null: every segment that ends now may be recorded; else only
+    // those it gives no reason against, and the others are dropped. Room and
+    // from are for the trace
     private List<SegmentRecord> CloseWhere(Predicate<OpenSegment> ends, long reading, EndState end,
-        Predicate<OpenSegment> records = null) {
+        Func<OpenSegment, (TraceReason Reason, string Entry)> refuses = null, string room = null, string from = null) {
         List<SegmentRecord> result = [];
         for (int i = 0; i < open.Count;) {
             OpenSegment segment = open[i];
@@ -509,9 +605,19 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
             }
 
             open.RemoveAt(i);
-            if ((records == null || records(segment)) && !segment.Disqualified && Met(segment, reading, end) is { } ticks) {
-                result.Add(new SegmentRecord(segment.Rule, ticks, NoteOf(segment),
-                    segment.ReturnedToMap ? ReturnToMapNote.With : ReturnToMapNote.Without));
+            (TraceReason reason, string entry) = refuses?.Invoke(segment) ?? (TraceReason.None, null);
+            long ticks = 0;
+            if (reason == TraceReason.None) {
+                reason = segment.Disqualified ? TraceReason.Disqualified : Shortfall(segment, reading, end, out ticks);
+            }
+
+            if (reason == TraceReason.None) {
+                SegmentRecord record = new(segment.Rule, ticks, NoteOf(segment),
+                    segment.ReturnedToMap ? ReturnToMapNote.With : ReturnToMapNote.Without);
+                result.Add(record);
+                Report(TraceKind.Closed, segment.Rule, reason, reading, record, room, from);
+            } else {
+                Report(TraceKind.NotRecorded, segment.Rule, reason, reading, room: room, from: from, entry: entry);
             }
         }
 
@@ -546,20 +652,25 @@ internal sealed class RunTracker(IReadOnlyList<SegmentRule> rules, IRoomMap room
     }
 
     // the time, or null when the run did not meet the row's requirements
-    private long? Met(OpenSegment segment, long reading, EndState end) {
+    private long? Met(OpenSegment segment, long reading, EndState end) =>
+        Shortfall(segment, reading, end, out long ticks) == TraceReason.None ? ticks : null;
+
+    // the first requirement the run did not meet, or None with its time
+    private TraceReason Shortfall(OpenSegment segment, long reading, EndState end, out long ticks) {
         SegmentRule rule = segment.Rule;
         // the row's whole time: a piece of no length still records the others
         long elapsed = segment.Banked + reading - segment.Start;
-        if (elapsed <= 0
-            || (segment.Collected & rule.Requires) != rule.Requires
-            || segment.Gems < rule.Gems
-            || (rule.Dashes is { } dashes
-                && (rule.End == EndKind.ChapterEnd ? segment.FirstDashes : end.Dashes) != dashes)
-            || (rule.RequiresBerries && !HasEveryBerry(segment, end))) {
-            return null;
-        }
-
-        return elapsed + rule.HeadTicks + rule.TailTicks;
+        ticks = elapsed + rule.HeadTicks + rule.TailTicks;
+        Collectibles missing = rule.Requires & ~segment.Collected;
+        return elapsed <= 0 ? TraceReason.NoTime
+            : (missing & Collectibles.Heart) != 0 ? TraceReason.MissingHeart
+            : (missing & Collectibles.Cassette) != 0 ? TraceReason.MissingCassette
+            : missing != 0 ? TraceReason.MissingGem
+            : segment.Gems < rule.Gems ? TraceReason.MissingGems
+            : rule.Dashes is { } dashes && (rule.End == EndKind.ChapterEnd ? segment.FirstDashes : end.Dashes) != dashes
+                ? TraceReason.WrongDashes
+            : rule.RequiresBerries && !HasEveryBerry(segment, end) ? TraceReason.MissingBerries
+            : TraceReason.None;
     }
 
     // how many things the rule requires in all: what Lacks counts down from

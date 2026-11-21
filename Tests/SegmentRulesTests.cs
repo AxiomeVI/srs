@@ -156,7 +156,7 @@ public class SegmentRulesTests {
             SegmentRules.All.Where(r => r.Setup == StartSetup.MapSpawn).Select(r => $"{r.Scope}/{r.Name}"));
     }
 
-    // the owner's rule: 8A's Start rows start only on a chapter load, never on a savestate
+    // 8A's Start rows start only on a chapter load, never on a savestate
     [Fact]
     public void TheChapterLoadRows() {
         Assert.Equal(["8a/Start", "8a/IL", "8a/IL Tape Clear", "8a/ARB IL", "8a/FC IL"],
@@ -528,7 +528,7 @@ public class SegmentRulesTests {
         Assert.All(spanning, r => Assert.Equal(EndKind.NextStart, r.End));
     }
 
-    // its label ends in RC, but the row ends on the heart (owner)
+    // its label ends in RC, but the row ends on the heart
     [Fact]
     public void TwoAStartsHeartRowEndsOnTheHeart() {
         SegmentRule rule = Rule("2a", "Start Heart RC");

@@ -1,3 +1,4 @@
+#nullable disable
 using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework.Input;
@@ -92,8 +93,6 @@ internal sealed class ComboHotkey {
     // fire on all of them. The remap screen never records it and Bindable.Sanitize strips it on load;
     // this is the third line, for a settings file edited by hand.
     private static bool KeysDown(List<Keys> keys, in KeyboardState keyboard) {
-        if (keys is null) return false;
-
         int real = 0;
         for (int i = 0; i < keys.Count; i++) {
             if (keys[i] == Keys.None) continue;
@@ -105,7 +104,7 @@ internal sealed class ComboHotkey {
     }
 
     private static bool ButtonsDown(List<Buttons> buttons, in GamePadState pad) {
-        if (buttons is null || buttons.Count == 0) return false;
+        if (buttons.Count == 0) return false;
         for (int i = 0; i < buttons.Count; i++) {
             if (!pad.IsButtonDown(buttons[i])) return false;
         }
@@ -157,7 +156,6 @@ internal sealed class ComboHotkey {
             || (shorter.firedOnPad && longer.firedOnPad && IsStrictSubset(smaller.Buttons, larger.Buttons)));
 
     private static bool IsStrictSubset<T>(List<T> smaller, List<T> larger) {
-        if (smaller is null || larger is null) return false;
         if (smaller.Count == 0 || smaller.Count >= larger.Count) return false;
         for (int i = 0; i < smaller.Count; i++) {
             if (!larger.Contains(smaller[i])) return false;

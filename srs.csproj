@@ -56,7 +56,7 @@
         <DialogResources Include="$(MSBuildProjectDirectory)/Dialog/**/*" />
     </ItemGroup>
     <Target Name="OutputAsModStructure" AfterTargets="Build">
-        <!-- bin/ and not the mod root: that is where everest.yaml points, and where the deploy expects the DLL -->
+        <!-- bin/ and not the mod root: that is where everest.yaml points -->
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="build/bin" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="build/bin" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="bin" />

@@ -9,12 +9,14 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// route returns to the map, a checkpoint row whose route may return to the
 /// map instead, a checkpoint row whose route returns to the map inside it, a
 /// map-spawn row that a walk-in opens too, a row with no Save and Quit
-/// dropdown. A Full Clear label says nothing: all it requires is here.
+/// dropdown, a row whose standard is graded in file time. A Full Clear label
+/// says nothing: all it requires is here.
 internal readonly record struct RowTraits(
     bool MapSpawn = false, bool EndsOnHeart = false, Collectibles Requires = Collectibles.None,
     string EntryRoom = null, BerrySet Berries = null, bool NoBerries = false, int? Dashes = null,
     bool EndsOnReturnToMap = false, bool SpansLeaves = false, bool NoSaveAndQuitNote = false,
-    bool MayReturnToMap = false, bool AlsoWalkIn = false, bool SpansReturnToMap = false) {
+    bool MayReturnToMap = false, bool AlsoWalkIn = false, bool SpansReturnToMap = false,
+    bool StandardInFileTime = false) {
     private const Collectibles Heart = Collectibles.Heart;
     private const Collectibles Cassette = Collectibles.Cassette;
     private const Collectibles Gem = Collectibles.Gem;
@@ -33,13 +35,13 @@ internal readonly record struct RowTraits(
     // (SheetConsistencyTests checks each one)
     internal static readonly Dictionary<(string Scope, string Name), RowTraits> All = new() {
         // a route may return to the map after the collect and go on from the
-        // checkpoint's spawn (owner)
+        // checkpoint's spawn
         [("1a", "Chasm Tape Clear")] = new(SpansReturnToMap: true),
         [("7a", "2000m Gem")] = new(SpansReturnToMap: true),
         // 7zb is Crossing's far berry, taken from Start on that route
         [("1a", "ARB Start to RTM")] = new(EndsOnReturnToMap: true, Berries: new BerrySet("Start", Rooms: ["7zb"])),
         // 1A's Crossing and Chasm rows of both berry tabs open on their map
-        // spawn and on a walk-in from the checkpoint before (owner)
+        // spawn and on a walk-in from the checkpoint before
         [("1a", "ARB Crossing to RTM")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Requires: Heart, Berries: CrossingToRtmBerries),
         [("1a", "ARB Heart to RTM")] = new(EndsOnReturnToMap: true, Berries: HeartToRtmBerries),
         [("1a", "ARB Crossing-2")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Berries: new BerrySet(Rooms: ["7zb"])),
@@ -49,7 +51,7 @@ internal readonly record struct RowTraits(
         // 7zb, and 11 and 10zb, belong to the rows that return to the map
         [("1a", "ARB Crossing")] = new(MapSpawn: true, AlsoWalkIn: true, Requires: Heart, Berries: new BerrySet("Crossing", Except: ["7zb"])),
         [("1a", "ARB Chasm")] = new(MapSpawn: true, AlsoWalkIn: true, Berries: new BerrySet("Chasm", Except: ["11", "10zb"])),
-        [("1a", "ARB IL")] = new(Requires: Heart, SpansLeaves: true),
+        [("1a", "ARB IL")] = new(Requires: Heart, SpansLeaves: true, StandardInFileTime: true),
         [("3a", "ARB Huge Mess")] = new(Requires: Heart),
         [("3a", "ARB IL")] = new(Requires: Heart),
         [("4a", "ARB Shrine")] = new(Requires: Heart),
@@ -76,9 +78,9 @@ internal readonly record struct RowTraits(
         [("1a", "FC Heart to RTM")] = new(EndsOnReturnToMap: true, Requires: Cassette, Berries: HeartToRtmBerries),
         [("1a", "FC Crossing to RTM")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Requires: Heart | Cassette, Berries: CrossingToRtmBerries),
         [("1a", "FC Chasm-2")] = new(MapSpawn: true, AlsoWalkIn: true, EndsOnReturnToMap: true, Requires: Cassette, Berries: ChasmTwoBerries),
-        [("1a", "FC IL")] = new(Requires: Heart | Cassette, SpansLeaves: true),
+        [("1a", "FC IL")] = new(Requires: Heart | Cassette, SpansLeaves: true, StandardInFileTime: true),
         // the heart of 2A's Start is a row of its own, which ends on the heart
-        // collect though its label ends in RC (owner)
+        // collect though its label ends in RC
         [("2a", "Start Heart RC")] = new(EndsOnHeart: true),
         [("2a", "FC Start")] = new(Requires: Cassette),
         [("2a", "FC IL")] = new(Requires: Cassette),
@@ -96,7 +98,7 @@ internal readonly record struct RowTraits(
         [("7a", "FC 1000m")] = new(Requires: Gem),
         [("7a", "FC 1500m")] = new(Requires: Gem | Cassette),
         // the route returns to the map inside the checkpoint, and goes on from
-        // its spawn to the next one (owner)
+        // its spawn to the next one
         [("7a", "FC 2000m")] = new(Requires: Gem, SpansReturnToMap: true),
         [("7a", "FC 2500m")] = new(Requires: Gem, SpansReturnToMap: true),
         [("7a", "FC 3000m")] = new(Requires: Heart),
