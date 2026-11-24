@@ -10,7 +10,7 @@ public enum RoomLoad {
     // any intro but Respawn: a transition, or a room change the game makes
     // in a cutscene
     WalkIn,
-    // any other Respawn: Speed Run Tool's teleport, into another room or to
+    // any other Respawn: SpeedrunTool's teleport, into another room or to
     // a summit flag of this one
     Teleport,
     // a level from the loader: entering a chapter, a restart, console load,

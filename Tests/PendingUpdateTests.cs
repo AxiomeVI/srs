@@ -127,7 +127,7 @@ public class PendingUpdateTests {
         Assert.Equal("1:05:00.000", update.LocalText);
     }
 
-    // what the format looks like is Speed Run Tool's business and only the
+    // what the format looks like is SpeedrunTool's business and only the
     // stand-in's here: assert the route, never the string
     [Fact]
     public void LocalTextGoesThroughTheTimeFormat() {

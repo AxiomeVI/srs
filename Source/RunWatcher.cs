@@ -116,10 +116,10 @@ public static class RunWatcher {
         saveLoadAction = SaveLoadImports.RegisterStaticTypes?.Invoke(typeof(Saved),
             [nameof(Saved.Stamp), nameof(Saved.From), nameof(Saved.SpawnAt), nameof(Saved.Moved)]);
         if (saveLoadAction == null) {
-            Logger.Log(LogLevel.Warn, "srs", "Speed Run Tool's SaveLoad did not bind: savestate loads cannot be seen, so srs records nothing");
+            Logger.Log(LogLevel.Warn, "srs", "SpeedrunTool's SaveLoad did not bind: savestate loads cannot be seen, so srs records nothing");
         }
 
-        // saveState runs from Speed Run Tool's hotkey, before the level
+        // saveState runs from SpeedrunTool's hotkey, before the level
         // updates, which stays frozen until the save's wipe ends: the next
         // fed frame reads the level as saved, as a load of it would.
         // loadState runs once the level is restored, before a player load's
@@ -239,7 +239,7 @@ public static class RunWatcher {
     /// SrsModule's Level.Update hook, first in the frame. Hotkeys.Poll follows
     /// each call to orig at once: the rows read its Pressed after this returns.
     internal static void Update(On.Celeste.Level.orig_Update orig, Level self) {
-        // switched off, without Speed Run Tool's SaveLoad, or under an assist
+        // switched off, without SpeedrunTool's SaveLoad, or under an assist
         // or a variant: nothing is fed
         if (!SrsModule.Settings.Enabled || saveLoadAction == null || Assisted()) {
             FeedingIs(!SrsModule.Settings.Enabled ? "SwitchedOff" : saveLoadAction == null ? "NoSaveLoad" : "Assisted");
@@ -442,7 +442,7 @@ public static class RunWatcher {
         }
     }
 
-    // srs switched on, with Speed Run Tool's SaveLoad bound
+    // srs switched on, with SpeedrunTool's SaveLoad bound
     private static bool Switched => SrsModule.Settings.Enabled && saveLoadAction != null;
 
     // a split of an older SomeSplitButtons reports nothing: no record can

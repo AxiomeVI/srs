@@ -7,7 +7,7 @@ namespace Celeste.Mod.SpeedrunSheet.Tests;
 // authority, and this project cannot reference it. TimeFormat owns only the
 // delta and the form of an hour or more.
 public class TimeFormatTests {
-    // Speed Run Tool's format has no hours
+    // SpeedrunTool's format has no hours
     [Theory]
     [InlineData(3600.0, "1:00:00.000")]
     [InlineData(3903.2509, "1:05:03.250")]

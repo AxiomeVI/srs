@@ -826,7 +826,7 @@ public class RunTrackerTests {
         Assert.Equal([("Unravelling", 250L)], Of(t.RoomEntered("5a", "c-13", "d-00", 400, true, false, One)));
     }
 
-    // Speed Run Tool's PageDown into the room before Crossing's, then walking in
+    // SpeedrunTool's PageDown into the room before Crossing's, then walking in
     [Fact]
     public void ATeleportIntoTheEntryRoomThenAnEntryRecords() {
         Add("Crossing", "6", "9b", entry: "5");

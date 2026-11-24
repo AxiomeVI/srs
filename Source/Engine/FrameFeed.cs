@@ -45,7 +45,7 @@ internal interface IFrameGame {
     /// room excluded: what a checkpoint picked on the map lands on.
     bool AtCheckpointSpawnPastStartRoom();
 
-    /// Speed Run Tool's "freeze after load" is Off.
+    /// SpeedrunTool's "freeze after load" is Off.
     bool FreezeAfterLoadOff { get; }
 }
 
@@ -130,7 +130,7 @@ internal sealed class FrameFeed {
     private bool loaded;
     private bool saved;
 
-    // with Speed Run Tool's "freeze after load" Off, a player load counts the
+    // with SpeedrunTool's "freeze after load" Off, a player load counts the
     // frame its own wipe ends on, which Session.Time does not. A TAS load
     // starts no wipe, and restores the one its state was saved under
     private static readonly long WipeEndFrame = TimeSpan.FromMilliseconds(17).Ticks;
@@ -312,7 +312,7 @@ internal sealed class FrameFeed {
 
             restarted = true;
         } else if (teleported) {
-            // Speed Run Tool's room teleport skips rooms without lowering chapter
+            // SpeedrunTool's room teleport skips rooms without lowering chapter
             // time: a new attempt from the spawn it put the player on
             Via = "Teleport";
             tracker.Restart(r.Scope, r.Room, r.Before, player.Control, player.Launching, game.AtRespawnPoint());
@@ -366,7 +366,9 @@ internal sealed class FrameFeed {
         }
 
         // The chapter's end takes the reading after orig, as chapter time
-        // does; Speed Run Tool's display stops a frame short there.
+        // does. Before 3.29.5, SpeedrunTool stops a frame short where the
+        // area completes inside the frame's update: the Prologue, 5A,
+        // Farewell's final boost, and a heart before 3.29.4.
         //
         // Completed turning true is the chapter's end, and a leave: fed
         // once, here, so the exit that follows adds nothing. TimerStopped
@@ -453,7 +455,7 @@ internal sealed class FrameFeed {
         return true;
     }
 
-    /// An event is fed only with srs on and Speed Run Tool's SaveLoad bound,
+    /// An event is fed only with srs on and SpeedrunTool's SaveLoad bound,
     /// once a frame was fed, and not between a load and its first frame.
     private bool Accepts(bool on, long savedStamp) => on && FedLastFrame && savedStamp == Stamp;
 

@@ -1059,7 +1059,7 @@ public class FrameFeedTests {
         Assert.True(feed.FedLastFrame);
     }
 
-    // Speed Run Tool's room teleport updates the level from its hotkey: two
+    // SpeedrunTool's room teleport updates the level from its hotkey: two
     // frames in a row, the first a teleport, the second a normal frame
     [Fact]
     public void TheTeleportsSecondUpdateIsANormalFrame() {
