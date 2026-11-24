@@ -366,7 +366,9 @@ internal sealed class FrameFeed {
         }
 
         // The chapter's end takes the reading after orig, as chapter time
-        // does; Speed Run Tool's display stops a frame short there.
+        // does. Before 3.29.5, SpeedrunTool stops a frame short where the
+        // area completes inside the frame's update: the Prologue, 5A,
+        // Farewell's final boost, and a heart before 3.29.4.
         //
         // Completed turning true is the chapter's end, and a leave: fed
         // once, here, so the exit that follows adds nothing. TimerStopped
