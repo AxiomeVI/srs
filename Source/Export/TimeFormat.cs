@@ -6,12 +6,12 @@ namespace Celeste.Mod.SpeedrunSheet;
 /// The one place a tick count becomes a string a player sees or the sheet
 /// receives.
 public static class TimeFormat {
-    /// Speed Run Tool's own formatter, installed by SpeedrunToolMatch, so a time
+    /// SpeedrunTool's own formatter, installed by SpeedrunToolMatch, so a time
     /// reads as its timer would show it. A delegate rather than a call, for the
     /// reason ExportProtocol.Localize is one.
     public static Func<long, string> Format;
 
-    /// From an hour up the format is ours: Speed Run Tool's prints minutes and
+    /// From an hour up the format is ours: SpeedrunTool's prints minutes and
     /// seconds only, and would show the time an hour short.
     public static string FromTicks(long ticks) =>
         ticks >= TimeSpan.TicksPerHour ? WithHours(ticks)

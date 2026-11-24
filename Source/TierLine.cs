@@ -10,7 +10,7 @@ internal readonly record struct TierRows(string Time, string Tier, string Pb, st
 
 internal static class TierLine {
     /// `sheetTicks` is the player's own time for the row, null when unknown.
-    /// The time is ranked as Speed Run Tool shows it, to the millisecond, which
+    /// The time is ranked as SpeedrunTool shows it, to the millisecond, which
     /// is also the time the export writes and the sheet ranks. The tier and
     /// the gap are taken on that time plus `rankOffsetTicks`; the time and the PB
     /// are not. A null `rankOffsetTicks` gives the time alone, no tier, no gap.

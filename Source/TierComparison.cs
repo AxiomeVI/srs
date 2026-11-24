@@ -7,7 +7,7 @@ using Monocle;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
-// Two rows above Speed Run Tool's timer: the segment's name, over its time,
+// Two rows above SpeedrunTool's timer: the segment's name, over its time,
 // tier, PB gain and delta to the next tier. Shown until the player leaves
 // RunWatcher.LatestRoom (the room the segment closed in, or the one a
 // re-entry that kept it landed in), and not again on coming back. The
@@ -28,7 +28,7 @@ public static class TierComparison {
     // hide on leaving it instead of RunWatcher.LatestRoom
     private static string recalledIn;
 
-    // the gold of Speed Run Tool's timer on a best time. Plain text, not its
+    // the gold of SpeedrunTool's timer on a best time. Plain text, not its
     // renderer: that one draws decimals at 70 %, unreadable at this size
     private static readonly Color PbColor = Calc.HexToColor("fad768");
 
@@ -235,17 +235,17 @@ public static class TierComparison {
     // art shows between the two bands, or the rows read as one block
     private const float RowGap = 4f;
 
-    // Speed Run Tool's text placement sits the ink high in the band: lowered
+    // SpeedrunTool's text placement sits the ink high in the band: lowered
     // to its middle
     private const float TextDrop = 2f;
 
     // the black ends this far before the text does, so the fade's tail runs
-    // the same length past every row: the look of Speed Run Tool's PB row
+    // the same length past every row: the look of SpeedrunTool's PB row
     // on a time of eight characters
     private const float FadeLead = 78f;
 
     // slot 0 sits right above the timer, slot 1 above it; same background and
-    // sliding animation as Speed Run Tool's PB row, scaled down. One band for
+    // sliding animation as SpeedrunTool's PB row, scaled down. One band for
     // the whole row, sized on what is written
     private static void DrawRow(SpeedrunTimerDisplay self, int slot, List<(string Text, Color Color)> parts) {
         const float timeMarginLeft = 32f;

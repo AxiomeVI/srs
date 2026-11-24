@@ -27,7 +27,7 @@ public class RoomLoadTests {
         Assert.Equal(RoomLoad.Respawn, RoomLoads.Of(fromLoader: false, respawnIntro: true, reloading: true));
     }
 
-    // Speed Run Tool's room teleport, into another room or onto a summit flag of this one
+    // SpeedrunTool's room teleport, into another room or onto a summit flag of this one
     [Fact]
     public void ARespawnOutsideReloadIsATeleport() {
         Assert.Equal(RoomLoad.Teleport, RoomLoads.Of(fromLoader: false, respawnIntro: true, reloading: false));

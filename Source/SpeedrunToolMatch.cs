@@ -6,19 +6,19 @@ using System.Reflection;
 
 namespace Celeste.Mod.SpeedrunSheet;
 
-/// Looks up Speed Run Tool's time formatter and every member srs's code names
+/// Looks up SpeedrunTool's time formatter and every member srs's code names
 /// outside the ModInterop, before anything that names one is installed. A
-/// member renamed in a Speed Run Tool release would throw inside a hook, where
+/// member renamed in a SpeedrunTool release would throw inside a hook, where
 /// the method naming it is first compiled, and without the formatter srs has no
 /// time format at all: on any miss srs installs nothing and says so.
-/// ⚠️ Reflection only. No Speed Run Tool type may reach this class's code: it
-/// runs before anything knows those types are there. A Speed Run Tool member
+/// ⚠️ Reflection only. No SpeedrunTool type may reach this class's code: it
+/// runs before anything knows those types are there. A SpeedrunTool member
 /// newly named in srs joins Members.
 internal static class SpeedrunToolMatch {
     private const string Namespace = "Celeste.Mod.SpeedrunTool.";
 
     // srs compares against Off as compiled: a constant is folded into the
-    // compiled code, so these two name no Speed Run Tool type at run time
+    // compiled code, so these two name no SpeedrunTool type at run time
     private const long RoomTimerOff = (long) SpeedrunTool.RoomTimer.RoomTimerType.Off;
     private const long FreezeOff = (long) SpeedrunTool.FreezeAfterLoadStateType.Off;
 
@@ -47,7 +47,7 @@ internal static class SpeedrunToolMatch {
     /// What was not found, null while everything was.
     internal static string Missing { get; private set; }
 
-    /// Installs Speed Run Tool's formatter and returns true, or logs the one
+    /// Installs SpeedrunTool's formatter and returns true, or logs the one
     /// Error and returns false.
     internal static bool Adopt() {
         Func<long, bool, string> format = null;
@@ -60,7 +60,7 @@ internal static class SpeedrunToolMatch {
                 missing.Add("the SpeedrunTool module");
             } else {
                 // public, in a class that is not, and not in the ModInterop.
-                // isPbTime false: true returns "" for a zero, Speed Run Tool's absent PB
+                // isPbTime false: true returns "" for a zero, SpeedrunTool's absent PB
                 MethodInfo formatTime = Find(tool, "RoomTimer.RoomTimerData")?
                     .GetMethod("FormatTime", BindingFlags.Public | BindingFlags.Static,
                         null, [typeof(long), typeof(bool)], null);
@@ -87,7 +87,7 @@ internal static class SpeedrunToolMatch {
             // never a formatter of srs's own: a second one would drift in
             // silence and write a time into the player's sheet that no longer
             // matches the timer
-            Logger.Log(LogLevel.Error, "srs", "Speed Run Tool does not match this srs, not found: " + Missing
+            Logger.Log(LogLevel.Error, "srs", "SpeedrunTool does not match this srs, not found: " + Missing
                 + ". srs stays off: it records, shows and exports nothing until a srs update.");
             return false;
         }
