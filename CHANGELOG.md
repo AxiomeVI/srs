@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v4.5.1 — 2026-11-25
 
 - **A row started from a savestate no longer counts an extra frame.** With SpeedrunTool's "freeze after load" Off, a row started from a savestate recorded one frame more than chapter time. It now equals chapter time, whatever that setting.
 
