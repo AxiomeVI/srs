@@ -18,9 +18,8 @@ internal static class SpeedrunToolMatch {
     private const string Namespace = "Celeste.Mod.SpeedrunTool.";
 
     // srs compares against Off as compiled: a constant is folded into the
-    // compiled code, so these two name no SpeedrunTool type at run time
+    // compiled code, so it names no SpeedrunTool type at run time
     private const long RoomTimerOff = (long) SpeedrunTool.RoomTimer.RoomTimerType.Off;
-    private const long FreezeOff = (long) SpeedrunTool.FreezeAfterLoadStateType.Off;
 
     private static readonly (string Name, Func<Assembly, bool> Found)[] Members = [
         ("SpeedrunToolSettings.Instance", tool =>
@@ -29,10 +28,7 @@ internal static class SpeedrunToolMatch {
             HasProperty(tool, "SpeedrunToolSettings", "Enabled", BindingFlags.Instance, typeof(bool))),
         ("SpeedrunToolSettings.RoomTimerType", tool =>
             HasProperty(tool, "SpeedrunToolSettings", "RoomTimerType", BindingFlags.Instance, Find(tool, "RoomTimer.RoomTimerType"))),
-        ("SpeedrunToolSettings.FreezeAfterLoadStateType", tool =>
-            HasProperty(tool, "SpeedrunToolSettings", "FreezeAfterLoadStateType", BindingFlags.Instance, Find(tool, "FreezeAfterLoadStateType"))),
         ("RoomTimerType.Off", tool => IsValue(Find(tool, "RoomTimer.RoomTimerType"), "Off", RoomTimerOff)),
-        ("FreezeAfterLoadStateType.Off", tool => IsValue(Find(tool, "FreezeAfterLoadStateType"), "Off", FreezeOff)),
         ("PopupMessageUtils.Show", tool =>
             Find(tool, "Message.PopupMessageUtils")?.GetMethod("Show", BindingFlags.Public | BindingFlags.Static,
                 null, [typeof(string), typeof(string)], null)?.ReturnType == typeof(void)),

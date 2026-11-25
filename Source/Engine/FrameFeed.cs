@@ -44,9 +44,6 @@ internal interface IFrameGame {
     /// The respawn point is a checkpoint's own spawn, the chapter's first
     /// room excluded: what a checkpoint picked on the map lands on.
     bool AtCheckpointSpawnPastStartRoom();
-
-    /// SpeedrunTool's "freeze after load" is Off.
-    bool FreezeAfterLoadOff { get; }
 }
 
 /// What a frame's decisions left for the feed that follows them.
@@ -129,11 +126,6 @@ internal sealed class FrameFeed {
     // last fed frame
     private bool loaded;
     private bool saved;
-
-    // with SpeedrunTool's "freeze after load" Off, a player load counts the
-    // frame its own wipe ends on, which Session.Time does not. A TAS load
-    // starts no wipe, and restores the one its state was saved under
-    private static readonly long WipeEndFrame = TimeSpan.FromMilliseconds(17).Ticks;
 
     /// Before the game's update of a fed frame: before is chapter time, the
     /// reading a room entry is timed from.
@@ -248,12 +240,9 @@ internal sealed class FrameFeed {
             // every load is a new attempt. With control, the room's Current Room
             // segment opens if the player has not moved since appearing on its
             // start spawn; without, it waits for the appearance that follows.
-            // A save starts its wipe a frame later (a TAS's starts none, but
-            // a row a TAS plays is never recorded)
-            bool wipeEnd = (saved || r.LoadWiping) && game.FreezeAfterLoadOff;
             Via = loaded ? "SavestateLoad" : "SavestateMade";
             if (r.PlayerBefore.Control) {
-                tracker.Restart(r.Scope, r.RoomBefore, r.Before - (wipeEnd ? WipeEndFrame : 0), true,
+                tracker.Restart(r.Scope, r.RoomBefore, r.Before, true,
                     r.PlayerBefore.Launching,
                     r.SavedBefore.Moved ? _ => false : game.AtLoadedSpawn(r.SavedBefore.SpawnX, r.SavedBefore.SpawnY),
                     fromState: true);

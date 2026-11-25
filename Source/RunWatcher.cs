@@ -44,10 +44,7 @@ public static class RunWatcher {
     }
 
     private static object saveLoadAction;
-    private static object wipeAction;
-    // the wipe the last load restored with the level, before a player load
-    // starts its own; read and cleared on the next frame
-    private static ScreenWipe restoredWipe;
+    private static object stateSavedAction;
     // the berries following the player, rebuilt on every fed frame and read
     // inside it only
     private static readonly List<string> following = [];
@@ -122,12 +119,11 @@ public static class RunWatcher {
         // saveState runs from SpeedrunTool's hotkey, before the level
         // updates, which stays frozen until the save's wipe ends: the next
         // fed frame reads the level as saved, as a load of it would.
-        // loadState runs once the level is restored, before a player load's
-        // wipe starts. clearState stays unwired: clearing a slot rewinds
-        // nothing, and a TAS may clear the slots as it starts
-        wipeAction = SaveLoadImports.RegisterSaveLoadAction?.Invoke(
+        // clearState stays unwired: clearing a slot rewinds nothing, and a
+        // TAS may clear the slots as it starts
+        stateSavedAction = SaveLoadImports.RegisterSaveLoadAction?.Invoke(
             (_, _) => feed.StateSaved = true,
-            (_, level) => restoredWipe = level.Wipe, null, null, null, null);
+            null, null, null, null, null);
 
         typeof(SplitImports).ModInterop();
         typeof(TasImports).ModInterop();
@@ -170,15 +166,14 @@ public static class RunWatcher {
             saveLoadAction = null;
         }
 
-        if (wipeAction != null) {
-            SaveLoadImports.Unregister?.Invoke(wipeAction);
-            wipeAction = null;
+        if (stateSavedAction != null) {
+            SaveLoadImports.Unregister?.Invoke(stateSavedAction);
+            stateSavedAction = null;
         }
 
         SplitImports.RemoveSplitObserver?.Invoke(OnSplitStage);
         observing = false;
 
-        restoredWipe = null;
         feed.Leave = null;
     }
 
@@ -244,7 +239,6 @@ public static class RunWatcher {
         if (!SrsModule.Settings.Enabled || saveLoadAction == null || Assisted()) {
             FeedingIs(!SrsModule.Settings.Enabled ? "SwitchedOff" : saveLoadAction == null ? "NoSaveLoad" : "Assisted");
             feed.OffBeforeUpdate();
-            restoredWipe = null;
             orig(self);
             Hotkeys.Poll(self);
             Write(feed.OffAfterUpdate(SavedNow(), self.Session.Level, SideOf(self, self.Tracker.GetEntity<Player>()).Fall));
@@ -260,8 +254,6 @@ public static class RunWatcher {
         PlayerSide sideBefore = SideOf(self, self.Tracker.GetEntity<Player>());
         bool stoppedBefore = self.TimerStopped || self.Completed;
         bool completedBefore = self.Completed;
-        bool loadWiping = self.Wipe != null && self.Wipe != restoredWipe;
-        restoredWipe = null;
         SavedValues savedBefore = SavedNow();
 
         FeedingIs(null);
@@ -271,7 +263,7 @@ public static class RunWatcher {
 
         Session session = self.Session;
         Player player = self.Tracker.GetEntity<Player>();
-        FrameReading reading = new(before, roomBefore, sideBefore, stoppedBefore, completedBefore, loadWiping,
+        FrameReading reading = new(before, roomBefore, sideBefore, stoppedBefore, completedBefore,
             savedBefore, tasBefore,
             session.Time, session.Level, SegmentAutoDetect.ScopeOf(session), SideOf(self, player),
             self.TimerStopped || self.Completed, self.Completed, self.InCredits,
@@ -499,9 +491,6 @@ public static class RunWatcher {
                    && session.RespawnPoint is { } at && session.LevelData is { } data
                    && CheckpointSpawn(data) is { } spawn && Near(at, spawn);
         }
-
-        public bool FreezeAfterLoadOff =>
-            SpeedrunToolSettings.Instance?.FreezeAfterLoadStateType == FreezeAfterLoadStateType.Off;
 
         public IRoomMap Rooms => RoomMap.For(level.Session);
         public string Room => level.Session.Level;
