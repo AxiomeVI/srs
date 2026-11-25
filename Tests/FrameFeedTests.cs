@@ -33,7 +33,6 @@ public class FrameFeedTests {
         public bool OnStart = true;
         public (float, float)? LoadedSpawnAsked;
         public bool CheckpointSpawn;
-        public bool FreezeAfterLoadOff { get; set; }
 
         public Func<SegmentRule, bool> AtLoadedSpawn(float x, float y) {
             LoadedSpawnAsked = (x, y);
@@ -372,7 +371,7 @@ public class FrameFeedTests {
     private static readonly SavedValues Unmoved = new(Stamp, "0", 10, 20, false);
 
     // a fed frame in room 1, nothing loaded, chapter time 100 then 117
-    private static FrameReading Plain() => new(100, "1", Standing(), false, false, false, Unmoved, false,
+    private static FrameReading Plain() => new(100, "1", Standing(), false, false, Unmoved, false,
         117, "1", "1a", Standing(), false, false, false, (1, 0), new EndState(1, []), Unmoved, false);
 
     // a savestate loaded: the stamp it brings back is older than the feed's
@@ -417,21 +416,6 @@ public class FrameFeedTests {
         Assert.Equal(100, Assert.Single(Opened()).Reading);
         Assert.Equal((10f, 20f), game.LoadedSpawnAsked);
         Assert.True(outcome.Feeds);
-    }
-
-    // with "freeze after load" Off, a player load counts the frame its own
-    // wipe ends on; a TAS load starts none
-    [Theory]
-    [InlineData(true, true, 100 - 170000)]
-    [InlineData(true, false, 100)]
-    [InlineData(false, true, 100)]
-    public void OnlyAPlayerLoadWithFreezeOffCountsItsWipesLastFrame(bool freezeOff, bool ownWipe, long opened) {
-        StartRows();
-        game.FreezeAfterLoadOff = freezeOff;
-
-        Feed(Loaded() with { LoadWiping = ownWipe });
-
-        Assert.Equal(opened, Assert.Single(Opened()).Reading);
     }
 
     [Fact]
@@ -491,21 +475,8 @@ public class FrameFeedTests {
         Feed(Plain());
 
         Assert.Equal("SavestateMade", feed.Via);
-        Assert.Single(Opened());
+        Assert.Equal(100, Assert.Single(Opened()).Reading);
         Assert.False(feed.StateSaved);
-    }
-
-    // a TAS save starts no wipe, a player's starts one a frame later: a save
-    // counts the wipe's frame under freeze Off, whatever it reads
-    [Fact]
-    public void ASavestateMadeWithFreezeOffCountsItsWipe() {
-        StartRows();
-        feed.StateSaved = true;
-        game.FreezeAfterLoadOff = true;
-
-        Feed(Plain());
-
-        Assert.Equal(100 - 170000, Assert.Single(Opened()).Reading);
     }
 
     [Fact]
@@ -513,12 +484,9 @@ public class FrameFeedTests {
         StartRows();
         feed.StateSaved = true;
 
-        game.FreezeAfterLoadOff = true;
-
         Feed(Loaded());
 
         Assert.Equal("SavestateLoad", feed.Via);
-        // a TAS load, which starts no wipe: no frame of one is counted
         Assert.Equal(100, Assert.Single(Opened()).Reading);
     }
 

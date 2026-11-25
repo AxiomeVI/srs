@@ -45,8 +45,6 @@ internal readonly record struct SavedValues(long Stamp, string From, float Spawn
 /// and what the savestate-registered fields held on each side.
 internal readonly record struct FrameReading(
     long Before, string RoomBefore, PlayerSide PlayerBefore, bool StoppedBefore, bool CompletedBefore,
-    // a player load's own wipe, not the one a load restored with the level
-    bool LoadWiping,
     SavedValues SavedBefore, bool TasBefore,
     long After, string Room, string Scope, PlayerSide Player, bool Stopped, bool Completed,
     bool InCredits, (int Id, int Mode) Area, EndState End,

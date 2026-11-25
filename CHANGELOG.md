@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A row started from a savestate no longer counts an extra frame.** With SpeedrunTool's "freeze after load" Off, a row started from a savestate recorded one frame more than chapter time. It now equals chapter time, whatever that setting.
+
 ## v4.5.0 — 2026-11-21
 
 - **A difference of 0.1 s or less reads in frames.** The PB gain and the gap to the next tier above the timer, and the delta on the export screen, show `-3f` instead of `-0.051`, a frame being the 17 ms chapter time moves by. The gap counts the frames you must save, so a tie with the threshold reads `+1f`. 0.1 s itself reads `+6f`; past it, differences read as times, as before.
